@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "corridor": {
+    "softEdge": {
+      "enabled": true,
+      "minimumGraceM": 50,
+      "percentage": 0.1,
+      "maximumGraceM": 250
+    }
+  },
+  "categories": [
+    {
+      "id": "supermarket",
+      "group": "food",
+      "label": "Supermarket",
+      "defaultEnabled": true,
+      "defaultRadiusM": 250,
+      "osm": { "anyOf": [{ "shop": "supermarket" }] }
+    },
+    {
+      "id": "convenience",
+      "group": "food",
+      "label": "Convenience / kiosk",
+      "defaultEnabled": false,
+      "defaultRadiusM": 250,
+      "osm": { "anyOf": [{ "shop": "convenience" }, { "shop": "kiosk" }] }
+    },
+    {
+      "id": "fuel",
+      "group": "food",
+      "label": "Fuel station",
+      "defaultEnabled": true,
+      "defaultRadiusM": 250,
+      "osm": { "anyOf": [{ "amenity": "fuel" }] }
+    },
+    {
+      "id": "bakery",
+      "group": "food",
+      "label": "Bakery",
+      "defaultEnabled": false,
+      "defaultRadiusM": 300,
+      "osm": { "anyOf": [{ "shop": "bakery" }] }
+    },
+    {
+      "id": "cafe",
+      "group": "food",
+      "label": "Cafe",
+      "defaultEnabled": false,
+      "defaultRadiusM": 300,
+      "osm": { "anyOf": [{ "amenity": "cafe" }] }
+    },
+    {
+      "id": "fast_food",
+      "group": "food",
+      "label": "Fast food / snack bar",
+      "defaultEnabled": false,
+      "defaultRadiusM": 300,
+      "osm": { "anyOf": [{ "amenity": "fast_food" }] }
+    },
+    {
+      "id": "restaurant",
+      "group": "food",
+      "label": "Restaurant",
+      "defaultEnabled": false,
+      "defaultRadiusM": 500,
+      "osm": { "anyOf": [{ "amenity": "restaurant" }] }
+    },
+    {
+      "id": "drinking_water",
+      "group": "essentials",
+      "label": "Drinking water",
+      "defaultEnabled": true,
+      "defaultRadiusM": 300,
+      "osm": { "anyOf": [{ "amenity": "drinking_water" }] }
+    },
+    {
+      "id": "toilets",
+      "group": "essentials",
+      "label": "Toilets",
+      "defaultEnabled": true,
+      "defaultRadiusM": 500,
+      "osm": { "anyOf": [{ "amenity": "toilets" }] }
+    },
+    {
+      "id": "pharmacy",
+      "group": "essentials",
+      "label": "Pharmacy",
+      "defaultEnabled": false,
+      "defaultRadiusM": 750,
+      "osm": { "anyOf": [{ "amenity": "pharmacy" }] }
+    },
+    {
+      "id": "atm",
+      "group": "essentials",
+      "label": "ATM",
+      "defaultEnabled": false,
+      "defaultRadiusM": 500,
+      "osm": { "anyOf": [{ "amenity": "atm" }] }
+    },
+    {
+      "id": "bicycle_shop",
+      "group": "bike",
+      "label": "Bicycle shop / repair",
+      "defaultEnabled": true,
+      "defaultRadiusM": 2000,
+      "osm": { "anyOf": [{ "shop": "bicycle" }] }
+    },
+    {
+      "id": "bicycle_repair_station",
+      "group": "bike",
+      "label": "Bicycle repair station / public pump",
+      "defaultEnabled": true,
+      "defaultRadiusM": 1000,
+      "osm": { "anyOf": [{ "amenity": "bicycle_repair_station" }] }
+    },
+    {
+      "id": "railway",
+      "group": "transport",
+      "label": "Railway station / halt",
+      "defaultEnabled": true,
+      "defaultRadiusM": 2500,
+      "osm": { "anyOf": [{ "railway": "station" }, { "railway": "halt" }] }
+    },
+    {
+      "id": "ferry",
+      "group": "transport",
+      "label": "Ferry terminal",
+      "defaultEnabled": false,
+      "defaultRadiusM": 2000,
+      "osm": { "anyOf": [{ "amenity": "ferry_terminal" }] }
+    },
+    {
+      "id": "dhl_packstation",
+      "group": "logistics",
+      "label": "DHL Packstation",
+      "defaultEnabled": false,
+      "defaultRadiusM": 500,
+      "osm": {
+        "allOf": [{ "amenity": "parcel_locker" }],
+        "providerAnyOf": [
+          { "brand": "DHL Packstation" },
+          { "operator": "DHL" }
+        ]
+      }
+    },
+    {
+      "id": "amazon_locker",
+      "group": "logistics",
+      "label": "Amazon Locker",
+      "defaultEnabled": false,
+      "defaultRadiusM": 500,
+      "osm": {
+        "allOf": [{ "amenity": "parcel_locker" }],
+        "providerAnyOf": [
+          { "brand": "Amazon Locker" },
+          { "operator": "Amazon" }
+        ]
+      }
+    },
+    {
+      "id": "parcel_locker",
+      "group": "logistics",
+      "label": "Other parcel locker",
+      "defaultEnabled": false,
+      "defaultRadiusM": 500,
+      "osm": { "anyOf": [{ "amenity": "parcel_locker" }] }
+    },
+    {
+      "id": "accommodation",
+      "group": "overnight",
+      "label": "Hotel / guesthouse",
+      "defaultEnabled": false,
+      "defaultRadiusM": 2000,
+      "osm": { "anyOf": [{ "tourism": "hotel" }, { "tourism": "guest_house" }] }
+    },
+    {
+      "id": "campsite",
+      "group": "overnight",
+      "label": "Campsite",
+      "defaultEnabled": false,
+      "defaultRadiusM": 3000,
+      "osm": { "anyOf": [{ "tourism": "camp_site" }] }
+    },
+    {
+      "id": "shelter",
+      "group": "overnight",
+      "label": "Shelter / refuge",
+      "defaultEnabled": false,
+      "defaultRadiusM": 1500,
+      "osm": { "anyOf": [{ "amenity": "shelter" }] }
+    },
+    {
+      "id": "hospital",
+      "group": "emergency",
+      "label": "Hospital",
+      "defaultEnabled": false,
+      "defaultRadiusM": 5000,
+      "osm": { "anyOf": [{ "amenity": "hospital" }] }
+    },
+    {
+      "id": "doctor",
+      "group": "emergency",
+      "label": "Doctor / medical care",
+      "defaultEnabled": false,
+      "defaultRadiusM": 2000,
+      "osm": { "anyOf": [{ "amenity": "doctors" }] }
+    },
+    {
+      "id": "cemetery",
+      "group": "essentials",
+      "label": "Cemetery (possible water/resupply)",
+      "defaultEnabled": false,
+      "defaultRadiusM": 500,
+      "osm": { "anyOf": [{ "landuse": "cemetery" }, { "amenity": "grave_yard" }] },
+      "notes": "Never imply potable water from the cemetery tag alone. Show drinking water as verified only when it is explicitly mapped as its own POI."
+    }
+  ],
+  "presets": {
+    "ice": {
+      "label": "ICE — In Case of Emergency",
+      "description": "Temporary overlay that widens selected search radii without overwriting the user's normal settings.",
+      "radiusOverridesM": {
+        "supermarket": 2000,
+        "fuel": 2000,
+        "pharmacy": 3000,
+        "bicycle_shop": 5000,
+        "bicycle_repair_station": 3000,
+        "railway": 5000,
+        "shelter": 3000,
+        "hospital": 10000,
+        "doctor": 5000,
+        "cemetery": 1500
+      }
+    }
+  }
+}
