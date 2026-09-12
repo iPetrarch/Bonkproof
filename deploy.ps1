@@ -93,6 +93,7 @@ foreach ($requiredKey in @('HostName', 'UserName', 'RemotePath', 'SshHostKeyFing
     }
 }
 
+$previousState = Get-DeployState $statePath
 $currentState = @{}
 $changed = [System.Collections.Generic.List[object]]::new()
 
@@ -106,10 +107,8 @@ foreach ($relativePath in $publishFiles) {
     $currentState[$relativePath] = $hash
 
     $previousHash = $null
-    if ($state = Get-DeployState $statePath) {
-        if ($state.ContainsKey($relativePath)) {
-            $previousHash = [string]$state[$relativePath]
-        }
+    if ($previousState.ContainsKey($relativePath)) {
+        $previousHash = [string]$previousState[$relativePath]
     }
 
     if ($Force -or $hash -ne $previousHash) {
