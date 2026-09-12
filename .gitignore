@@ -8,6 +8,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+deploy.local.ps1
+.deploy-state.json
 
 # Logs / temporary output
 *.log
