@@ -155,9 +155,9 @@
       L.polyline(
         segment.map((point) => [point.lat, point.lon]),
         {
-          color: '#2f6d3a',
+          color: '#1f5f73',
           weight: 5,
-          opacity: 0.92,
+          opacity: 0.94,
           lineJoin: 'round',
         },
       ).addTo(routeLayer);
