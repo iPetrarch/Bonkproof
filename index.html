@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Bonkproof helps long-distance riders understand useful stops and supply gaps along a GPX route.">
+  <title>Bonkproof</title>
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://tile.openstreetmap.org">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="map-panel" aria-label="Route map">
+      <div id="map"></div>
+
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Long-distance route intelligence</p>
+          <h1>Bonkproof</h1>
+        </div>
+        <label class="file-button" for="gpx-file">Load GPX</label>
+        <input id="gpx-file" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden>
+      </header>
+
+      <div id="drop-zone" class="empty-state">
+        <div class="empty-card">
+          <p class="empty-icon" aria-hidden="true">⌁</p>
+          <h2>Drop a GPX route here</h2>
+          <p>The file stays in your browser. Bonkproof does not upload it.</p>
+          <label class="primary-button" for="gpx-file">Choose GPX file</label>
+        </div>
+      </div>
+
+      <aside id="route-card" class="route-card" hidden>
+        <div>
+          <p id="route-name" class="route-name">Route</p>
+          <p id="route-file" class="muted"></p>
+        </div>
+        <dl class="route-stats">
+          <div>
+            <dt>Distance</dt>
+            <dd id="route-distance">—</dd>
+          </div>
+          <div>
+            <dt>Points</dt>
+            <dd id="route-points">—</dd>
+          </div>
+        </dl>
+        <button id="replace-route" class="text-button" type="button">Replace route</button>
+      </aside>
+
+      <div id="error-message" class="error-message" role="alert" hidden></div>
+    </section>
+
+    <section class="sheet" aria-label="Bonkproof controls">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <nav class="tabs" aria-label="Route tools">
+        <button class="tab is-active" type="button">POIs</button>
+        <button class="tab" type="button" disabled>Routebook</button>
+        <button class="tab" type="button" disabled>Warnings</button>
+        <button class="tab" type="button" disabled>Export</button>
+      </nav>
+      <div class="placeholder-panel">
+        <p class="eyebrow">v0.1</p>
+        <h2>Route first. Useful stops next.</h2>
+        <p>Load a GPX route to verify the foundation. POI corridors, routebook, warnings and device-aware exports come next.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
