@@ -39,14 +39,8 @@
           <p id="route-file" class="muted"></p>
         </div>
         <dl class="route-stats">
-          <div>
-            <dt>Distance</dt>
-            <dd id="route-distance">—</dd>
-          </div>
-          <div>
-            <dt>Points</dt>
-            <dd id="route-points">—</dd>
-          </div>
+          <div><dt>Distance</dt><dd id="route-distance">—</dd></div>
+          <div><dt>Points</dt><dd id="route-points">—</dd></div>
         </dl>
         <button id="replace-route" class="text-button" type="button">Replace route</button>
       </aside>
@@ -62,11 +56,37 @@
         <button class="tab" type="button" disabled>Warnings</button>
         <button class="tab" type="button" disabled>Export</button>
       </nav>
-      <div class="placeholder-panel">
-        <p class="eyebrow">v0.1</p>
-        <h2>Route first. Useful stops next.</h2>
-        <p>Load a GPX route to verify the foundation. POI corridors, routebook, warnings and device-aware exports come next.</p>
-      </div>
+
+      <section class="poi-panel" aria-labelledby="poi-heading">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">v0.1 corridor test</p>
+            <h2 id="poi-heading">Resupply along the route</h2>
+          </div>
+          <span id="poi-total" class="count-badge" hidden>0</span>
+        </div>
+        <p id="poi-status" class="status-copy">Load a GPX route. Bonkproof will then look for supermarkets and fuel stations near the route.</p>
+
+        <div id="poi-categories" class="poi-categories" hidden>
+          <div class="category-row" data-category="supermarket">
+            <span class="category-symbol" aria-hidden="true">S</span>
+            <div><strong>Supermarkets</strong><span id="supermarket-radius" class="category-meta">—</span></div>
+            <span id="supermarket-count" class="category-count">0</span>
+          </div>
+          <div class="category-row" data-category="fuel">
+            <span class="category-symbol fuel" aria-hidden="true">F</span>
+            <div><strong>Fuel stations</strong><span id="fuel-radius" class="category-meta">—</span></div>
+            <span id="fuel-count" class="category-count">0</span>
+          </div>
+        </div>
+
+        <div class="poi-legend" aria-label="POI legend" hidden id="poi-legend">
+          <span><i class="legend-dot"></i> inside corridor</span>
+          <span><i class="legend-dot near"></i> near miss</span>
+        </div>
+
+        <ol id="poi-list" class="poi-list" hidden></ol>
+      </section>
     </section>
   </main>
 
