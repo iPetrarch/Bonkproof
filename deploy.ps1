@@ -18,7 +18,8 @@ $statePath = Join-Path $repoRoot ".deploy-state.$Profile.json"
 $publishFiles = @(
     'index.html',
     'styles.css',
-    'app.js'
+    'app.js',
+    'config/poi-categories.json'
 )
 
 function Get-Sha256([string]$Path) {
@@ -175,7 +176,13 @@ try {
     $transferOptions.TransferMode = [WinSCP.TransferMode]::Binary
 
     foreach ($item in $changed) {
-        $remotePath = "$remoteRoot/$($item.RelativePath.Replace('\\', '/'))"
+        $normalizedRelativePath = $item.RelativePath.Replace('\\', '/')
+        $remotePath = "$remoteRoot/$normalizedRelativePath"
+        $remoteDirectory = $remotePath.Substring(0, $remotePath.LastIndexOf('/'))
+        if (-not $session.FileExists($remoteDirectory)) {
+            $session.CreateDirectory($remoteDirectory)
+        }
+
         $result = $session.PutFiles($item.LocalPath, $remotePath, $false, $transferOptions)
         $result.Check()
         Write-Host "Uploaded $($item.RelativePath)"
