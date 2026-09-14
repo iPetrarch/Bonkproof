@@ -2,15 +2,18 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { buildRoutebook, poiKey, togglePoiSelection } from '../routebook.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus } from '../poi-search.js';
 
-const [rawApp, rawStyles, rawDeploy] = await Promise.all([
+const [rawApp, rawStyles, rawDeploy, rawIndex] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../deploy.ps1', import.meta.url), 'utf8'),
+  readFile(new URL('../index.html', import.meta.url), 'utf8'),
 ]);
 const app = rawApp.replaceAll('\r\n', '\n');
 const styles = rawStyles.replaceAll('\r\n', '\n');
 const deploy = rawDeploy.replaceAll('\r\n', '\n');
+const index = rawIndex.replaceAll('\r\n', '\n');
 
 test('a rendered route hides the GPX import overlay', () => {
   assert.match(app, /function renderRoute\(parsed, fileName\)[\s\S]*?dropZone\.hidden = true;/);
@@ -70,4 +73,60 @@ test('gaps over 60 km are marked and a new route resets the selection', () => {
   assert.equal(routebook.entries.at(-1).isLongGap, true);
   assert.match(app, /function renderRoute\(parsed, fileName\)[\s\S]*?selectedPoiIds = new Set\(\);/);
   assert.match(styles, /\.routebook-item\.long-gap/);
+});
+
+function routeOfKm(kilometres) {
+  const points = Array.from({ length: Math.ceil(kilometres / 10) + 1 }, (_, index) => ({ lat: index * (10 / 111.2), lon: 0 }));
+  return { segments: [points] };
+}
+
+test('POI query sections cover short, exact and long routes with overlap', () => {
+  assert.equal(buildPoiQuerySections(routeOfKm(49)).length, 1);
+  assert.equal(buildPoiQuerySections(routeOfKm(50)).length, 1);
+  const longSections = buildPoiQuerySections(routeOfKm(234));
+  assert.equal(longSections.length, 5);
+  assert.ok(longSections[1].queryStartMeters < longSections[1].coreStartMeters);
+  assert.ok(longSections[0].queryEndMeters > longSections[0].coreEndMeters);
+});
+
+test('section requests are sequential and not parallel', () => {
+  assert.match(app, /for \(const section of sections\)/);
+  assert.doesNotMatch(app, /Promise\.all\(sections/);
+});
+
+test('retry handles one transient gateway failure only', async () => {
+  let calls = 0;
+  const result = await fetchPoiSectionWithRetry(async () => {
+    calls += 1;
+    if (calls === 1) throw Object.assign(new Error('gateway timeout'), { status: 504 });
+    return ['ok'];
+  }, {}, { wait: 0 });
+  assert.deepEqual(result, ['ok']);
+  assert.equal(calls, 2);
+  assert.equal(isRetryablePoiStatus(502), true);
+  assert.equal(isRetryablePoiStatus(503), true);
+  assert.equal(isRetryablePoiStatus(504), true);
+  assert.equal(isRetryablePoiStatus(500), false);
+});
+
+test('non-transient errors and repeated transient errors are not retried', async () => {
+  let calls = 0;
+  await assert.rejects(() => fetchPoiSectionWithRetry(async () => {
+    calls += 1;
+    throw Object.assign(new Error('bad request'), { status: 400 });
+  }, {}, { wait: 0 }));
+  assert.equal(calls, 1);
+  calls = 0;
+  await assert.rejects(() => fetchPoiSectionWithRetry(async () => {
+    calls += 1;
+    throw Object.assign(new Error('still unavailable'), { status: 503 });
+  }, {}, { wait: 0 }));
+  assert.equal(calls, 2);
+});
+
+test('reload is disabled before a route, preserves IDs and prevents parallel searches', () => {
+  assert.match(index, /id="reload-pois"[^>]*disabled/);
+  assert.match(app, /if \(poiSearchRunning\) return;/);
+  assert.match(app, /loadPois\(currentParsedRoute, true\)/);
+  assert.match(app, /selectedPoiIds = new Set\(\[\.\.\.selectedPoiIds\].*poiKey\(poi\)/s);
 });

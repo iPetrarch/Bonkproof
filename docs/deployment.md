@@ -21,6 +21,7 @@ The deployment script currently publishes only:
 - `styles.css`
 - `app.js`
 - `routebook.js`
+- `poi-search.js`
 - `config/poi-categories.json`
 
 The deployment script verifies that every local JavaScript module imported by a published JavaScript file is also in this list before it opens a connection.

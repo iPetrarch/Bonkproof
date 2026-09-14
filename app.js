@@ -1,4 +1,5 @@
 import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -30,6 +31,7 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
   const routebookSummary = document.getElementById('routebook-summary');
   const routebookEmpty = document.getElementById('routebook-empty');
   const routebookList = document.getElementById('routebook-list');
+  const reloadPois = document.getElementById('reload-pois');
 
   const map = L.map('map', {
     zoomControl: true,
@@ -51,6 +53,8 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
   let currentCategories = [];
   let selectedPoiIds = new Set();
   let currentRouteDistanceMeters = 0;
+  let currentParsedRoute = null;
+  let poiSearchRunning = false;
   const poiMarkers = new Map();
 
   function showError(message) {
@@ -83,6 +87,12 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
     fuelRadius.textContent = '—';
   }
 
+  function setPoiSearchRunning(running) {
+    poiSearchRunning = running;
+    reloadPois.disabled = running || !currentParsedRoute;
+    reloadPois.textContent = running ? 'POIs werden gesucht…' : 'POIs neu laden';
+  }
+
   function resetRoutebook() {
     selectedPoiIds = new Set();
     currentRouteDistanceMeters = 0;
@@ -92,11 +102,13 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
   function clearRoute() {
     poiAbortController?.abort();
     routeLayer.clearLayers();
+    currentParsedRoute = null;
     clearPoiUi();
     resetRoutebook();
     routeCard.hidden = true;
     dropZone.hidden = false;
     fileInput.value = '';
+    setPoiSearchRunning(false);
     setPoiStatus('Load a GPX route. Bonkproof will then look for supermarkets and fuel stations near the route.');
   }
 
@@ -214,12 +226,15 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
   }
 
   function renderRoute(parsed, fileName) {
+    poiAbortController?.abort();
+    poiSearchRunning = false;
     routeLayer.clearLayers();
     poiLayer.clearLayers();
     poiMarkers.clear();
     currentPois = [];
     selectedPoiIds = new Set();
     currentRouteDistanceMeters = parsed.distanceMeters;
+    currentParsedRoute = parsed;
 
     parsed.segments.forEach((segment) => {
       L.polyline(segment.map((point) => [point.lat, point.lon]), {
@@ -245,6 +260,7 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
     routePoints.textContent = parsed.pointCount.toLocaleString();
     routeCard.hidden = false;
     dropZone.hidden = true;
+    setPoiSearchRunning(false);
     renderRoutebook();
   }
 
@@ -307,9 +323,9 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
     return `[out:json][timeout:30];(${statements.join('')});out center tags;`;
   }
 
-  async function fetchOsmCandidates(categories, parsed, config, signal) {
+  async function fetchOsmCandidates(categories, section, config, signal) {
     const maxEnvelope = Math.max(...categories.map((category) => category.defaultRadiusM + getGraceMeters(category, config)));
-    const bbox = getRouteBounds(parsed, maxEnvelope);
+    const bbox = getRouteBounds({ segments: [section.points] }, maxEnvelope);
     const query = buildOverpassQuery(categories, bbox);
     const body = new URLSearchParams({ data: query });
 
@@ -321,7 +337,9 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
     });
 
     if (!response.ok) {
-      throw new Error(`OpenStreetMap POI lookup failed (${response.status}).`);
+      const error = new Error(`OpenStreetMap POI lookup failed (${response.status}).`);
+      error.status = response.status;
+      throw error;
     }
 
     const payload = await response.json();
@@ -550,11 +568,15 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
     );
   }
 
-  async function loadPois(parsed) {
+  async function loadPois(parsed, preserveSelection = false) {
+    if (poiSearchRunning) return;
+    const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
+    setPoiSearchRunning(true);
     poiAbortController?.abort();
     poiAbortController = new AbortController();
     const { signal } = poiAbortController;
     clearPoiUi();
+    selectedPoiIds = previousSelection;
     setPoiStatus('Reading POI configuration…');
 
     try {
@@ -573,32 +595,49 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
         if (category.id === 'fuel') fuelRadius.textContent = text;
       });
       poiCategories.hidden = false;
-      setPoiStatus('Searching OpenStreetMap for supermarkets and fuel stations…');
-
-      const candidates = await fetchOsmCandidates(categories, parsed, config, signal);
-      if (signal.aborted) return;
-
-      setPoiStatus(`Checking ${candidates.length.toLocaleString()} OpenStreetMap candidates against the actual route corridor…`);
       const geometry = buildRouteGeometry(parsed);
       const deduped = new Map();
-
-      candidates.forEach((element) => {
-        const poi = normalizePoi(element, categories, geometry, config);
-        if (!poi) return;
-        const key = `${poi.osmType}/${poi.osmId}`;
-        const existing = deduped.get(key);
-        if (!existing || poi.offRouteM < existing.offRouteM) {
-          deduped.set(key, poi);
+      const sections = buildPoiQuerySections(parsed);
+      const failedSections = [];
+      for (const section of sections) {
+        if (signal.aborted) return;
+        setPoiStatus(`POIs werden gesucht: Abschnitt ${section.index} von ${section.total}`);
+        try {
+          const candidates = await fetchPoiSectionWithRetry(
+            (currentSection, currentSignal) => fetchOsmCandidates(categories, currentSection, config, currentSignal),
+            section,
+            { signal },
+          );
+          if (!candidates) return;
+          candidates.forEach((element) => {
+            const poi = normalizePoi(element, categories, geometry, config);
+            if (!poi) return;
+            const key = `${poi.osmType}/${poi.osmId}`;
+            const existing = deduped.get(key);
+            if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
+          });
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+          failedSections.push(section.index);
+          console.error(error);
         }
-      });
+      }
 
       const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+      selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
       renderPois(pois, categories);
+      setPoiStatus(
+        failedSections.length > 0
+          ? `POI-Suche teilweise erfolgreich: Abschnitte ${failedSections.join(', ')} fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Abschnitten verfügbar.`
+          : `${pois.length} POIs aus ${sections.length} erfolgreichen Abschnitten geladen.`,
+      );
     } catch (error) {
       if (error?.name === 'AbortError') return;
       console.error(error);
       setPoiStatus('The route is loaded, but the POI lookup failed. You can keep using the route view and try again with another GPX later.');
       showError(error instanceof Error ? error.message : 'Could not load route POIs.');
+    } finally {
+      if (!signal.aborted) setPoiSearchRunning(false);
     }
   }
 
@@ -622,6 +661,7 @@ import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
 
   fileInput.addEventListener('change', (event) => loadFile(event.target.files?.[0]));
   replaceRoute.addEventListener('click', () => fileInput.click());
+  reloadPois.addEventListener('click', () => currentParsedRoute && loadPois(currentParsedRoute, true));
   poisTab.addEventListener('click', () => setActiveTab('pois'));
   routebookTab.addEventListener('click', () => setActiveTab('routebook'));
 

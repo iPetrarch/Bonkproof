@@ -20,6 +20,7 @@ $publishFiles = @(
     'styles.css',
     'app.js',
     'routebook.js',
+    'poi-search.js',
     'config/poi-categories.json'
 )
 
