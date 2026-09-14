@@ -69,7 +69,7 @@ test('an empty routebook treats the complete route as its longest gap', () => {
   assert.equal(routebook.longestGapM, 75000);
 });
 
-test('gaps over 60 km are marked and a new route resets the selection', () => {
+test('gaps over 30 km are marked and a new route resets the selection', () => {
   const routebook = buildRoutebook(pois, new Set([poiKey(pois[1])]), 100000);
   assert.equal(routebook.entries.at(-1).isLongGap, true);
   assert.match(app, /function renderRoute\(parsed, fileName\)[\s\S]*?selectedPoiIds = new Set\(\);/);
@@ -82,11 +82,30 @@ test('found and routebook warnings are distinct and use the fixed threshold', ()
     { osmType: 'node', osmId: 2, routeKm: 90, offRouteM: 20, name: 'B' },
   ];
   const result = buildRoutebookWarnings(pois, new Set(['node/1', 'node/2']), 150000);
-  assert.deepEqual(result.warnings.map((warning) => [warning.from, warning.to, warning.lengthM]), [['A', 'B', 80000]]);
-  assert.equal(buildFoundPoiWarnings([], 61000).warnings.length, 1);
-  assert.equal(buildFoundPoiWarnings([], 60000).warnings.length, 0);
-  assert.equal(buildFoundPoiWarnings([{ ...pois[0], status: 'near-miss' }], 61000).warnings.length, 1);
-  assert.equal(buildFoundPoiWarnings([{ ...pois[0], status: 'inside' }, { ...pois[1], status: 'inside' }], 150000).warnings.length, 1);
+  assert.deepEqual(result.warnings.map((warning) => [warning.from, warning.to, warning.lengthM]), [['A', 'B', 80000], ['B', 'Ziel', 60000]]);
+  assert.equal(buildFoundPoiWarnings([], 30100).warnings.length, 1);
+  assert.equal(buildFoundPoiWarnings([], 30000).warnings.length, 0);
+  assert.equal(buildFoundPoiWarnings([{ ...pois[0], status: 'near-miss' }], 30100).warnings.length, 1);
+  assert.equal(buildFoundPoiWarnings([{ ...pois[0], status: 'inside' }, { ...pois[1], status: 'inside' }], 150000).warnings.length, 2);
+});
+
+test('POI warning rendering suppresses incomplete physical gaps but keeps routebook warnings independent', () => {
+  const renderer = app.match(/function renderWarnings\(\)[\s\S]*?\n  \}\n\n  function spiderfyCluster/)[0];
+  assert.match(renderer, /poiSearchRunning/);
+  assert.match(renderer, /failedPoiSections\.length > 0/);
+  assert.match(renderer, /Versorgungslücken werden geprüft/);
+  assert.match(renderer, /Prüfung unvollständig/);
+  assert.match(app, /if \(activeTab !== 'routebook' && \(poiSearchRunning \|\| failedPoiSections\.length > 0\)\) return/);
+  assert.match(app, /activeTab === 'routebook'\s*\? buildRoutebookWarnings/);
+});
+
+test('POI section status keeps partial retries incomplete and preserves successful results', () => {
+  assert.match(app, /let poiSectionStatus = \{ total: 0, completed: 0, failed: new Set\(\), started: false \}/);
+  assert.match(app, /const incomplete = poiSectionStatus\.started && \(poiSectionStatus\.failed\.size > 0 \|\| poiSectionStatus\.completed < poiSectionStatus\.total\)/);
+  assert.match(app, /poiSectionStatus\.completed \+= 1/);
+  assert.match(app, /poiSectionStatus\.failed\.add\(section\.index\)/);
+  assert.match(app, /const deduped = new Map\(\(retryFailedOnly \? currentPois : \[\]\)/);
+  assert.match(app, /loadPois\(currentParsedRoute, true, failedPoiSections\.length > 0\)/);
 });
 
 test('warning geometry follows the actual route points', () => {

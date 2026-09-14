@@ -327,3 +327,6 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 .warning-item { align-items: center; background: color-mix(in srgb, var(--danger) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); border-radius: .65rem; display: flex; gap: 1rem; justify-content: space-between; padding: .8rem 1rem; }
 .warning-item small { color: var(--muted); display: block; margin-top: .2rem; }
 .warning-focus { border: 1px solid var(--danger); border-radius: .4rem; color: var(--danger); cursor: pointer; padding: .35rem .6rem; }
+.warning-summary { margin: 1rem 0 .75rem; }
+.warning-summary.is-pending { color: var(--muted); }
+.warning-summary.is-incomplete { background: color-mix(in srgb, var(--ochre) 14%, var(--panel)); border-left: 3px solid var(--ochre); color: var(--ink); padding: .7rem .85rem; }

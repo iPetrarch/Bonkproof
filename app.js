@@ -1,4 +1,4 @@
-import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, poiKey, togglePoiSelection } from './routebook.js';
+import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, poiKey, ROUTEBOOK_GAP_WARNING_M, togglePoiSelection } from './routebook.js';
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 
@@ -67,6 +67,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   let poiSearchRunning = false;
   let currentPoiSections = [];
   let failedPoiSections = [];
+  let poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: false };
   let poiPage = 1;
   let activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
   let activeTab = 'pois';
@@ -128,9 +129,10 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   function setPoiSearchRunning(running) {
     poiSearchRunning = running;
     reloadPois.disabled = running || !currentParsedRoute;
+    const incomplete = poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total);
     reloadPois.textContent = running
       ? 'POIs werden gesucht…'
-      : (failedPoiSections.length > 0 ? 'Fehlgeschlagene Abschnitte erneut laden' : 'POIs neu laden');
+      : (incomplete ? 'Fehlgeschlagene Abschnitte erneut laden' : 'POIs neu laden');
     if (typeof poiWarningSummary !== 'undefined') renderWarnings();
   }
 
@@ -152,6 +154,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     currentParsedRoute = null;
     currentPoiSections = [];
     failedPoiSections = [];
+    poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: false };
     resetPoiViewState();
     clearPoiUi();
     resetRoutebook();
@@ -287,6 +290,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     currentParsedRoute = parsed;
     currentPoiSections = buildPoiQuerySections(parsed);
     failedPoiSections = [];
+    poiSectionStatus = { total: currentPoiSections.length, completed: 0, failed: new Set(), started: false };
     resetPoiViewState();
 
     parsed.segments.forEach((segment) => {
@@ -520,7 +524,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     const hasRoute = currentRouteDistanceMeters > 0;
     const hasStops = routebook.stops.length > 0;
     routebookSummary.textContent = hasRoute
-      ? `Planning gaps from the current selection: longest section without a selected stop is ${formatDistance(routebook.longestGapM)}. Sections over 60 km are highlighted (V0.2 test value).`
+      ? `Planning gaps from the current selection: longest section without a selected stop is ${formatDistance(routebook.longestGapM)}. Sections over ${ROUTEBOOK_GAP_WARNING_M / 1000} km are highlighted (fixed V0.2 test value).`
       : 'Load a route to create a routebook.';
     routebookEmpty.hidden = hasStops || !hasRoute;
     routebookList.innerHTML = '';
@@ -602,6 +606,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   function renderWarningLayer() {
     warningLayer.clearLayers();
     if (!currentParsedRoute) return;
+    if (activeTab !== 'routebook' && (poiSearchRunning || failedPoiSections.length > 0)) return;
     const { warnings } = activeTab === 'routebook'
       ? buildRoutebookWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters)
       : buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters);
@@ -618,10 +623,28 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
       renderWarningLayer();
       return;
     }
+    if (activeTab !== 'routebook' && poiSearchRunning) {
+      poiWarningSummary.hidden = false;
+      poiWarningSummary.className = 'warning-summary is-pending';
+      poiWarningSummary.textContent = 'Versorgungslücken werden geprüft …';
+      poiWarningList.hidden = true;
+      poiWarningList.innerHTML = '';
+      renderWarningLayer();
+      return;
+    }
+    if (activeTab !== 'routebook' && failedPoiSections.length > 0) {
+      poiWarningSummary.hidden = false;
+      poiWarningSummary.className = 'warning-summary is-incomplete';
+      poiWarningSummary.textContent = `Prüfung unvollständig – einige Routenabschnitte konnten nicht geprüft werden. Fehlende Abschnitte: ${failedPoiSections.map((section) => section.index).join(', ')}.`;
+      poiWarningList.hidden = true;
+      poiWarningList.innerHTML = '';
+      renderWarningLayer();
+      return;
+    }
     const { warnings, longestGapM, foundCount } = buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters);
     poiWarningSummary.hidden = false;
-    const completeness = poiSearchRunning ? ' Vorläufig: die Suche läuft noch.' : (failedPoiSections.length ? ' Unvollständig: einzelne Abschnitte sind fehlgeschlagen.' : '');
-    poiWarningSummary.textContent = `${warnings.length} gefundene Versorgungslücke${warnings.length === 1 ? '' : 'n'}, längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} POIs innerhalb des Korridors. Near misses zählen nicht.${completeness}`;
+    poiWarningSummary.className = 'warning-summary';
+    poiWarningSummary.textContent = `${warnings.length} gefundene Versorgungslücke${warnings.length === 1 ? '' : 'n'}, längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} POIs innerhalb des Korridors. Schwelle: ${ROUTEBOOK_GAP_WARNING_M / 1000} km (fester V0.2-Testwert). Near misses zählen nicht.`;
     poiWarningList.innerHTML = '';
     poiWarningList.hidden = warnings.length === 0;
     warnings.forEach((warning) => {
@@ -746,6 +769,8 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     if (poiSearchRunning) return;
     const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
     const sectionsToQuery = retryFailedOnly ? failedPoiSections : currentPoiSections;
+    if (!retryFailedOnly) poiSectionStatus = { total: currentPoiSections.length, completed: 0, failed: new Set() };
+    poiSectionStatus.started = true;
     setPoiSearchRunning(true);
     poiAbortController?.abort();
     poiAbortController = new AbortController();
@@ -798,9 +823,12 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
             const existing = deduped.get(key);
             if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
           });
+          poiSectionStatus.completed += 1;
+          poiSectionStatus.failed.delete(section.index);
         } catch (error) {
           if (error?.name === 'AbortError') return;
           failedSections.push(section.index);
+          poiSectionStatus.failed.add(section.index);
           console.error(error);
         }
         if (section.index !== sections.at(-1)?.index) await waitForPoiBackoff(2500, section, signal);

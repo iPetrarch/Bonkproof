@@ -1,4 +1,4 @@
-export const ROUTEBOOK_GAP_WARNING_M = 60000;
+export const ROUTEBOOK_GAP_WARNING_M = 30000;
 
 export function poiKey(poi) {
   return `${poi.osmType}/${poi.osmId}`;
