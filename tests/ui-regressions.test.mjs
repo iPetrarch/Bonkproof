@@ -92,10 +92,12 @@ test('found and routebook warnings are distinct and use the fixed threshold', ()
 test('POI warning rendering suppresses incomplete physical gaps but keeps routebook warnings independent', () => {
   const renderer = app.match(/function renderWarnings\(\)[\s\S]*?\n  \}\n\n  function spiderfyCluster/)[0];
   assert.match(renderer, /poiSearchRunning/);
-  assert.match(renderer, /failedPoiSections\.length > 0/);
+  assert.match(renderer, /poiSectionStatus\.failed\.size > 0/);
   assert.match(renderer, /Versorgungslücken werden geprüft/);
   assert.match(renderer, /Prüfung unvollständig/);
-  assert.match(app, /if \(activeTab !== 'routebook' && \(poiSearchRunning \|\| failedPoiSections\.length > 0\)\) return/);
+  assert.match(app, /buildFoundPoiWarnings\(currentPois, currentRouteDistanceMeters\)/);
+  assert.match(app, /ohne gefundenen POI/);
+  assert.doesNotMatch(app, /formatDistance\(warning\.lengthM\) without a selected stop/);
   assert.match(app, /activeTab === 'routebook'\s*\? buildRoutebookWarnings/);
 });
 

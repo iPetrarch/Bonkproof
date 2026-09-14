@@ -606,7 +606,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   function renderWarningLayer() {
     warningLayer.clearLayers();
     if (!currentParsedRoute) return;
-    if (activeTab !== 'routebook' && (poiSearchRunning || failedPoiSections.length > 0)) return;
+    if (activeTab !== 'routebook' && (poiSearchRunning || (poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total)))) return;
     const { warnings } = activeTab === 'routebook'
       ? buildRoutebookWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters)
       : buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters);
@@ -632,7 +632,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
       renderWarningLayer();
       return;
     }
-    if (activeTab !== 'routebook' && failedPoiSections.length > 0) {
+    if (activeTab !== 'routebook' && poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total)) {
       poiWarningSummary.hidden = false;
       poiWarningSummary.className = 'warning-summary is-incomplete';
       poiWarningSummary.textContent = `Prüfung unvollständig – einige Routenabschnitte konnten nicht geprüft werden. Fehlende Abschnitte: ${failedPoiSections.map((section) => section.index).join(', ')}.`;
@@ -650,7 +650,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     warnings.forEach((warning) => {
       const item = document.createElement('li');
       item.className = 'warning-item';
-      item.innerHTML = `<span><strong>${escapeHtml(warning.from)} → ${escapeHtml(warning.to)}</strong><small>${formatDistance(warning.lengthM)} without a selected stop</small></span><button class="warning-focus" type="button">Focus</button>`;
+      item.innerHTML = `<span><strong>${escapeHtml(warning.from)} → ${escapeHtml(warning.to)}</strong><small>${formatDistance(warning.lengthM)} ohne gefundenen POI</small></span><button class="warning-focus" type="button">Focus</button>`;
       item.querySelector('button').addEventListener('click', () => {
         const geometry = extractRouteGeometryRange(currentParsedRoute, warning.startMeters, warning.endMeters);
         const points = geometry.flat();
