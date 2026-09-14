@@ -19,8 +19,35 @@ $publishFiles = @(
     'index.html',
     'styles.css',
     'app.js',
+    'routebook.js',
     'config/poi-categories.json'
 )
+
+function Assert-LocalJavaScriptImportsPublished([string[]]$Files) {
+    $published = @{}
+    foreach ($file in $Files) {
+        $published[$file.Replace('\', '/')] = $true
+    }
+
+    foreach ($relativePath in $Files | Where-Object { $_.EndsWith('.js') }) {
+        $localPath = Join-Path $repoRoot $relativePath
+        if (-not (Test-Path -LiteralPath $localPath)) {
+            continue
+        }
+
+        $source = Get-Content -LiteralPath $localPath -Raw
+        $imports = [regex]::Matches($source, '(?ms)^\s*import\s+.*?\s+from\s+["''](?<specifier>\.[^"'']+)["'']')
+        foreach ($import in $imports) {
+            $resolvedPath = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $localPath) $import.Groups['specifier'].Value))
+            $resolvedRelativePath = [System.IO.Path]::GetRelativePath($repoRoot, $resolvedPath).Replace('\', '/')
+            if (-not $published.ContainsKey($resolvedRelativePath)) {
+                throw "Local JavaScript import '$($import.Groups['specifier'].Value)' from '$relativePath' is not in the publish file list."
+            }
+        }
+    }
+}
+
+Assert-LocalJavaScriptImportsPublished $publishFiles
 
 function Get-Sha256([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()

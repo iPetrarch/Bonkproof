@@ -20,8 +20,10 @@ The deployment script currently publishes only:
 - `index.html`
 - `styles.css`
 - `app.js`
+- `routebook.js`
+- `config/poi-categories.json`
 
-When runtime configuration starts being consumed by the frontend, add `config/poi-categories.json` to the deployment whitelist.
+The deployment script verifies that every local JavaScript module imported by a published JavaScript file is also in this list before it opens a connection.
 
 ## one.com target
 

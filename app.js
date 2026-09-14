@@ -1,4 +1,4 @@
-import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.mjs';
+import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';

@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { buildRoutebook, poiKey, togglePoiSelection } from '../routebook.mjs';
+import { buildRoutebook, poiKey, togglePoiSelection } from '../routebook.js';
 
-const [rawApp, rawStyles] = await Promise.all([
+const [rawApp, rawStyles, rawDeploy] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
+  readFile(new URL('../deploy.ps1', import.meta.url), 'utf8'),
 ]);
 const app = rawApp.replaceAll('\r\n', '\n');
 const styles = rawStyles.replaceAll('\r\n', '\n');
+const deploy = rawDeploy.replaceAll('\r\n', '\n');
 
 test('a rendered route hides the GPX import overlay', () => {
   assert.match(app, /function renderRoute\(parsed, fileName\)[\s\S]*?dropZone\.hidden = true;/);
@@ -24,6 +26,13 @@ test('invalid GPX files keep the import overlay available while reporting an err
 
 test('the title starts to the right of the Leaflet zoom control', () => {
   assert.match(styles, /\.topbar > div\s*\{[\s\S]*?margin-left:\s*2\.5rem;/);
+});
+
+test('every productive local JavaScript import is whitelisted for deployment', () => {
+  const localImports = [...app.matchAll(/from\s+['"](\.\/[^'"]+\.js)['"]/g)].map((match) => match[1].slice(2));
+  assert.ok(localImports.length > 0, 'app should have a local JavaScript import to check');
+  localImports.forEach((file) => assert.match(deploy, new RegExp(`'${file.replace('.', '\\.')}'(?:,|\\s)`)));
+  assert.match(deploy, /function Assert-LocalJavaScriptImportsPublished/);
 });
 
 const pois = [

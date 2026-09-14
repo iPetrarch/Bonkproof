@@ -1,0 +1,8 @@
+{
+  "name": "bonkproof",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/ui-regressions.test.mjs"
+  }
+}
