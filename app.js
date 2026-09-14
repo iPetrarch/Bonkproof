@@ -1,3 +1,5 @@
+import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.mjs';
+
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
   const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
@@ -21,6 +23,13 @@
   const fuelCount = document.getElementById('fuel-count');
   const supermarketRadius = document.getElementById('supermarket-radius');
   const fuelRadius = document.getElementById('fuel-radius');
+  const poisTab = document.getElementById('pois-tab');
+  const routebookTab = document.getElementById('routebook-tab');
+  const poiPanel = document.getElementById('poi-panel');
+  const routebookPanel = document.getElementById('routebook-panel');
+  const routebookSummary = document.getElementById('routebook-summary');
+  const routebookEmpty = document.getElementById('routebook-empty');
+  const routebookList = document.getElementById('routebook-list');
 
   const map = L.map('map', {
     zoomControl: true,
@@ -38,6 +47,11 @@
   let errorTimer = null;
   let poiConfigPromise = null;
   let poiAbortController = null;
+  let currentPois = [];
+  let currentCategories = [];
+  let selectedPoiIds = new Set();
+  let currentRouteDistanceMeters = 0;
+  const poiMarkers = new Map();
 
   function showError(message) {
     clearTimeout(errorTimer);
@@ -54,6 +68,9 @@
 
   function clearPoiUi() {
     poiLayer.clearLayers();
+    poiMarkers.clear();
+    currentPois = [];
+    currentCategories = [];
     poiCategories.hidden = true;
     poiLegend.hidden = true;
     poiList.hidden = true;
@@ -66,10 +83,17 @@
     fuelRadius.textContent = '—';
   }
 
+  function resetRoutebook() {
+    selectedPoiIds = new Set();
+    currentRouteDistanceMeters = 0;
+    renderRoutebook();
+  }
+
   function clearRoute() {
     poiAbortController?.abort();
     routeLayer.clearLayers();
     clearPoiUi();
+    resetRoutebook();
     routeCard.hidden = true;
     dropZone.hidden = false;
     fileInput.value = '';
@@ -164,6 +188,10 @@
     return `${km < 10 ? km.toFixed(2) : km.toFixed(1)} km`;
   }
 
+  function formatRouteKm(meters) {
+    return `km ${(meters / 1000).toFixed(1)}`;
+  }
+
   function markerIcon(kind) {
     return L.divIcon({
       className: '',
@@ -175,9 +203,10 @@
 
   function poiMarkerIcon(poi) {
     const label = poi.category.id === 'fuel' ? 'F' : 'S';
+    const selectedClass = selectedPoiIds.has(poiKey(poi)) ? 'selected' : '';
     return L.divIcon({
       className: '',
-      html: `<div class="poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.category.id}" aria-hidden="true">${label}</div>`,
+      html: `<div class="poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.category.id} ${selectedClass}" aria-hidden="true">${label}</div>`,
       iconSize: [30, 30],
       iconAnchor: [15, 15],
       popupAnchor: [0, -14],
@@ -187,6 +216,10 @@
   function renderRoute(parsed, fileName) {
     routeLayer.clearLayers();
     poiLayer.clearLayers();
+    poiMarkers.clear();
+    currentPois = [];
+    selectedPoiIds = new Set();
+    currentRouteDistanceMeters = parsed.distanceMeters;
 
     parsed.segments.forEach((segment) => {
       L.polyline(segment.map((point) => [point.lat, point.lon]), {
@@ -212,6 +245,7 @@
     routePoints.textContent = parsed.pointCount.toLocaleString();
     routeCard.hidden = false;
     dropZone.hidden = true;
+    renderRoutebook();
   }
 
   async function getPoiConfig() {
@@ -397,19 +431,88 @@
       .replace(/'/g, '&#039;');
   }
 
+  function focusPoi(poi) {
+    map.setView([poi.lat, poi.lon], Math.max(map.getZoom(), 15));
+    poiMarkers.get(poiKey(poi))?.openPopup();
+  }
+
+  function toggleSelection(poiId) {
+    selectedPoiIds = togglePoiSelection(selectedPoiIds, poiId);
+    renderPois(currentPois, currentCategories);
+    renderRoutebook();
+  }
+
+  function renderRoutebook() {
+    const routebook = buildRoutebook(currentPois, selectedPoiIds, currentRouteDistanceMeters);
+    const hasRoute = currentRouteDistanceMeters > 0;
+    const hasStops = routebook.stops.length > 0;
+    routebookSummary.textContent = hasRoute
+      ? `Longest section without a selected stop: ${formatDistance(routebook.longestGapM)}. Sections over 60 km are highlighted (V0.2 test value).`
+      : 'Load a route to create a routebook.';
+    routebookEmpty.hidden = hasStops || !hasRoute;
+    routebookList.innerHTML = '';
+
+    routebook.entries.forEach((entry) => {
+      const item = document.createElement('li');
+      item.className = `routebook-item ${entry.kind} ${entry.isLongGap ? 'long-gap' : ''}`;
+      if (entry.kind === 'stop') {
+        item.innerHTML = `
+          <button type="button" class="routebook-focus">
+            <span class="routebook-main"><strong>${escapeHtml(entry.poi.name)}</strong><small>${escapeHtml(entry.poi.category.label)} · ${formatRouteKm(entry.routeMeters)}</small></span>
+            <span class="routebook-gap">${formatDistance(entry.distanceFromPreviousM)} from previous</span>
+          </button>
+          <button type="button" class="routebook-remove" aria-label="Remove ${escapeHtml(entry.poi.name)} from routebook">Remove</button>
+        `;
+        item.querySelector('.routebook-focus').addEventListener('click', () => {
+          setActiveTab('pois');
+          focusPoi(entry.poi);
+        });
+        item.querySelector('.routebook-remove').addEventListener('click', () => toggleSelection(poiKey(entry.poi)));
+      } else {
+        const isStart = entry.kind === 'start';
+        item.innerHTML = `
+          <span class="routebook-main"><strong>${entry.name}</strong><small>${formatRouteKm(entry.routeMeters)}</small></span>
+          ${isStart ? '' : `<span class="routebook-gap">${formatDistance(entry.distanceFromPreviousM)} from previous</span>`}
+        `;
+      }
+      routebookList.appendChild(item);
+    });
+    routebookList.hidden = !hasStops;
+  }
+
+  function setActiveTab(tab) {
+    const showPois = tab === 'pois';
+    poisTab.classList.toggle('is-active', showPois);
+    poisTab.setAttribute('aria-selected', String(showPois));
+    routebookTab.classList.toggle('is-active', !showPois);
+    routebookTab.setAttribute('aria-selected', String(!showPois));
+    poiPanel.hidden = !showPois;
+    routebookPanel.hidden = showPois;
+    if (!showPois) renderRoutebook();
+  }
+
   function renderPois(pois, categories) {
+    currentPois = pois;
+    currentCategories = categories;
     poiLayer.clearLayers();
+    poiMarkers.clear();
 
     pois.forEach((poi) => {
       const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
+      const poiId = poiKey(poi);
+      const selected = selectedPoiIds.has(poiId);
       const popup = `
         <strong>${escapeHtml(poi.name)}</strong><br>
         ${escapeHtml(poi.category.label)} · km ${poi.routeKm.toFixed(1)}<br>
-        ${Math.round(poi.offRouteM)} m off route · ${statusText}
+        ${Math.round(poi.offRouteM)} m off route · ${statusText}<br>
+        <button type="button" class="popup-selection" data-poi-id="${escapeHtml(poiId)}">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>
       `;
-      L.marker([poi.lat, poi.lon], { icon: poiMarkerIcon(poi), title: poi.name })
-        .bindPopup(popup)
-        .addTo(poiLayer);
+      const marker = L.marker([poi.lat, poi.lon], { icon: poiMarkerIcon(poi), title: poi.name }).bindPopup(popup).addTo(poiLayer);
+      marker.on('popupopen', () => {
+        const selectionButton = map.getContainer().querySelector(`[data-poi-id="${poiId}"]`);
+        selectionButton?.addEventListener('click', () => toggleSelection(poiId), { once: true });
+      });
+      poiMarkers.set(poiId, marker);
     });
 
     const counts = Object.fromEntries(categories.map((category) => [category.id, 0]));
@@ -425,18 +528,16 @@
     poiList.innerHTML = '';
     pois.slice(0, 30).forEach((poi) => {
       const item = document.createElement('li');
-      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''}`;
+      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiKey(poi)) ? 'selected' : ''}`;
       item.innerHTML = `
         <button type="button" class="poi-list-button">
           <span class="poi-list-main"><strong>${escapeHtml(poi.name)}</strong><small>${escapeHtml(poi.category.label)} · ${Math.round(poi.offRouteM)} m off route</small></span>
           <span class="route-km">km ${poi.routeKm.toFixed(1)}</span>
         </button>
+        <button type="button" class="poi-selection">${selectedPoiIds.has(poiKey(poi)) ? 'Remove' : 'Add'}</button>
       `;
-      item.querySelector('button').addEventListener('click', () => {
-        map.setView([poi.lat, poi.lon], Math.max(map.getZoom(), 15));
-        const matchingMarker = poiLayer.getLayers().find((layer) => layer.getLatLng && layer.getLatLng().lat === poi.lat && layer.getLatLng().lng === poi.lon);
-        matchingMarker?.openPopup();
-      });
+      item.querySelector('.poi-list-button').addEventListener('click', () => focusPoi(poi));
+      item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiKey(poi)));
       poiList.appendChild(item);
     });
     poiList.hidden = pois.length === 0;
@@ -521,6 +622,8 @@
 
   fileInput.addEventListener('change', (event) => loadFile(event.target.files?.[0]));
   replaceRoute.addEventListener('click', () => fileInput.click());
+  poisTab.addEventListener('click', () => setActiveTab('pois'));
+  routebookTab.addEventListener('click', () => setActiveTab('routebook'));
 
   ['dragenter', 'dragover'].forEach((type) => {
     window.addEventListener(type, (event) => {

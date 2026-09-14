@@ -51,13 +51,13 @@
     <section class="sheet" aria-label="Bonkproof controls">
       <div class="sheet-handle" aria-hidden="true"></div>
       <nav class="tabs" aria-label="Route tools">
-        <button class="tab is-active" type="button">POIs</button>
-        <button class="tab" type="button" disabled>Routebook</button>
+        <button id="pois-tab" class="tab is-active" type="button" aria-selected="true">POIs</button>
+        <button id="routebook-tab" class="tab" type="button" aria-selected="false">Routebook</button>
         <button class="tab" type="button" disabled>Warnings</button>
         <button class="tab" type="button" disabled>Export</button>
       </nav>
 
-      <section class="poi-panel" aria-labelledby="poi-heading">
+      <section id="poi-panel" class="poi-panel" aria-labelledby="poi-heading">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">v0.1 corridor test</p>
@@ -87,10 +87,22 @@
 
         <ol id="poi-list" class="poi-list" hidden></ol>
       </section>
+
+      <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">v0.2 routebook test</p>
+            <h2 id="routebook-heading">Selected stops</h2>
+          </div>
+        </div>
+        <p id="routebook-summary" class="status-copy"></p>
+        <div id="routebook-empty" class="routebook-empty">Choose POIs in the POIs tab to build your routebook.</div>
+        <ol id="routebook-list" class="routebook-list" hidden></ol>
+      </section>
     </section>
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="./app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
