@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, poiKey, togglePoiSelection } from '../routebook.js';
-import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, paginatePois, retryAfterMilliseconds } from '../poi-search.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, paginatePois, retryAfterMilliseconds, splitPoiQuerySection } from '../poi-search.js';
 import { clusterAccessibleLabel, clusterCategoryCounts, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX } from '../poi-clustering.js';
 
 const [rawApp, rawStyles, rawDeploy, rawIndex] = await Promise.all([
@@ -151,6 +151,22 @@ test('POI query sections cover short, exact and long routes with overlap', () =>
   assert.ok(longSections[0].queryEndMeters > longSections[0].coreEndMeters);
 });
 
+test('adaptive section splitting is one-time, halves the core and preserves overlap', () => {
+  const section = { index: 3, coreStartMeters: 100000, coreEndMeters: 150000, queryStartMeters: 99000, queryEndMeters: 150000, points: [{ lat: 1, lon: 1, routeMeters: 100000 }, { lat: 2, lon: 2, routeMeters: 125000 }, { lat: 3, lon: 3, routeMeters: 150000 }] };
+  const parts = splitPoiQuerySection(section);
+  assert.deepEqual(parts.map((part) => part.index), ['3.1', '3.2']);
+  assert.equal(parts[0].coreEndMeters, 125000);
+  assert.equal(parts[1].queryStartMeters, 124000);
+  assert.equal(splitPoiQuerySection({ ...section, parentSectionId: 3 }).length, 0);
+  assert.equal(splitPoiQuerySection({ ...section, coreEndMeters: 115000 }).length, 0);
+});
+
+test('a repeated 504 is the only adaptive split trigger and subunits stay sequential', () => {
+  assert.match(app, /Number\(error\?\.status\) === 504 \? splitPoiQuerySection\(section\) : \[\]/);
+  assert.match(app, /sections\.splice\(sectionPosition \+ 1, 0, \.\.\.subSections\)/);
+  assert.doesNotMatch(app, /Number\(error\?\.status\) === 429 \? splitPoiQuerySection/);
+});
+
 test('POI pagination covers zero, one, exact page, overflow and all 52 entries', () => {
   assert.doesNotMatch(app, /pois\.slice\(0, 30\)/);
   for (const count of [0, 1, 20, 21, 52]) {
@@ -166,7 +182,7 @@ test('POI pagination covers zero, one, exact page, overflow and all 52 entries',
 });
 
 test('section requests are sequential and not parallel', () => {
-  assert.match(app, /for \(const section of sections\)/);
+  assert.match(app, /for \(let sectionPosition = 0; sectionPosition < sections\.length/);
   assert.doesNotMatch(app, /Promise\.all\(sections/);
 });
 

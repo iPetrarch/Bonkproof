@@ -1,5 +1,6 @@
 export const POI_QUERY_SECTION_MAX_M = 50_000;
 export const POI_QUERY_OVERLAP_M = 1_000;
+export const POI_QUERY_ADAPTIVE_MIN_M = 20_000;
 export const POI_QUERY_RETRY_DELAY_MS = 350;
 export const POI_RATE_LIMIT_FALLBACK_MS = 30_000;
 export const POI_LIST_PAGE_SIZE = 20;
@@ -38,7 +39,10 @@ export function buildPoiQuerySections(parsed, maxMeters = POI_QUERY_SECTION_MAX_
     const coreEnd = Math.min(totalMeters, coreStart + maxMeters);
     const queryStart = Math.max(0, coreStart - overlapMeters);
     const queryEnd = Math.min(totalMeters, coreEnd + overlapMeters);
-    const sectionPoints = points.filter((_, index) => positions[index] >= queryStart && positions[index] <= queryEnd);
+    const sectionPoints = points
+      .map((point, index) => ({ point: { ...point, routeMeters: positions[index] }, position: positions[index] }))
+      .filter(({ position }) => position >= queryStart && position <= queryEnd)
+      .map(({ point }) => point);
     sections.push({
       index: sections.length + 1,
       total: Math.max(1, Math.ceil(totalMeters / maxMeters)),
@@ -50,6 +54,24 @@ export function buildPoiQuerySections(parsed, maxMeters = POI_QUERY_SECTION_MAX_
     });
   }
   return sections;
+}
+
+export function splitPoiQuerySection(section, minimumMeters = POI_QUERY_ADAPTIVE_MIN_M) {
+  const length = section.coreEndMeters - section.coreStartMeters;
+  if (section.parentSectionId || length < minimumMeters * 2 || section.points.length < 2) return [];
+  const midpoint = section.coreStartMeters + length / 2;
+  const overlap = POI_QUERY_OVERLAP_M;
+  const make = (id, coreStartMeters, coreEndMeters) => ({
+    ...section,
+    index: id,
+    parentSectionId: section.index,
+    coreStartMeters,
+    coreEndMeters,
+    queryStartMeters: Math.max(section.queryStartMeters, coreStartMeters - overlap),
+    queryEndMeters: Math.min(section.queryEndMeters, coreEndMeters + overlap),
+    points: section.points.filter((point) => point.routeMeters === undefined || (point.routeMeters >= Math.max(section.queryStartMeters, coreStartMeters - overlap) && point.routeMeters <= Math.min(section.queryEndMeters, coreEndMeters + overlap))),
+  });
+  return [make(`${section.index}.1`, section.coreStartMeters, midpoint), make(`${section.index}.2`, midpoint, section.coreEndMeters)];
 }
 
 export function isRetryablePoiStatus(status) {

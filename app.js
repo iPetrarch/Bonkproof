@@ -1,5 +1,5 @@
 import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, poiKey, ROUTEBOOK_GAP_WARNING_M, togglePoiSelection } from './routebook.js';
-import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from './poi-search.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, splitPoiQuerySection } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 
 (() => {
@@ -797,9 +797,10 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
       poiCategories.hidden = false;
       const geometry = buildRouteGeometry(parsed);
       const deduped = new Map((retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]));
-      const sections = sectionsToQuery;
+      const sections = [...sectionsToQuery];
       const failedSections = [];
-      for (const section of sections) {
+      for (let sectionPosition = 0; sectionPosition < sections.length; sectionPosition += 1) {
+        const section = sections[sectionPosition];
         if (signal.aborted) return;
         setPoiStatus(`POIs werden gesucht: Abschnitt ${section.index} von ${section.total}`);
         try {
@@ -827,6 +828,13 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
           poiSectionStatus.failed.delete(section.index);
         } catch (error) {
           if (error?.name === 'AbortError') return;
+          const subSections = Number(error?.status) === 504 ? splitPoiQuerySection(section) : [];
+          if (subSections.length === 2) {
+            poiSectionStatus.total += 1;
+            sections.splice(sectionPosition + 1, 0, ...subSections);
+            setPoiStatus(`Abschnitt ${section.index} war zu groß. Neuer Versuch in Teilabschnitten ${subSections.map((part) => part.index).join(' und ')}.`);
+            continue;
+          }
           failedSections.push(section.index);
           poiSectionStatus.failed.add(section.index);
           console.error(error);
@@ -836,7 +844,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
 
       const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
       selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
-      failedPoiSections = failedSections.map((index) => currentPoiSections.find((section) => section.index === index)).filter(Boolean);
+      failedPoiSections = sections.filter((section) => failedSections.includes(section.index));
       renderPois(pois, categories);
       setPoiStatus(
         failedSections.length > 0
