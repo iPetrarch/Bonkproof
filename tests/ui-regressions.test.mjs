@@ -116,6 +116,18 @@ test('warning geometry follows the actual route points', () => {
   assert.ok(geometry[0].some(([lat, lon]) => lat === 0 && lon === 1));
 });
 
+test('warning geometry uses cumulative meters, interpolates boundaries and preserves route order', () => {
+  const route = { segments: [[{ lat: 0, lon: 0 }, { lat: 0.5, lon: 0 }, { lat: 1, lon: 0 }, { lat: 1, lon: 1 }]] };
+  const geometry = extractRouteGeometryRange(route, 78300, 110400);
+  const points = geometry.flat();
+  assert.equal(geometry.length, 1);
+  assert.ok(points.length >= 2);
+  assert.ok(Math.abs(points[0][0] - 0.704) < 0.01, `unexpected start ${points[0]}`);
+  assert.ok(Math.abs(points.at(-1)[0] - 0.993) < 0.01, `unexpected end ${points.at(-1)}`);
+  assert.equal(points[0][1], 0);
+  assert.equal(points.at(-1)[1], 0);
+});
+
 test('warnings are integrated into POIs and Routebook without a third tab', () => {
   assert.doesNotMatch(index, /warnings-tab|warnings-panel/);
   assert.match(index, /id="poi-warning-summary"/);

@@ -87,26 +87,43 @@ function interpolate(a, b, fraction) {
   return [a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction];
 }
 
-export function extractRouteGeometryRange(parsedRoute, startMeters, endMeters) {
-  const points = (parsedRoute?.segments || []).flatMap((segment) => segment);
-  if (points.length < 2 || endMeters <= startMeters) return [];
-  const result = [];
+function routeDistanceMeters(a, b) {
+  const earthRadius = 6371008.8;
+  const toRad = (value) => value * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLon = Math.sin(dLon / 2);
+  const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+  return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+export function extractRouteGeometryRange(parsedRoute, startDistanceM, endDistanceM) {
+  if (!parsedRoute?.segments?.length || endDistanceM <= startDistanceM) return [];
+  const lines = [];
   let cumulative = 0;
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const a = points[index];
-    const b = points[index + 1];
-    const length = Math.hypot((b.lat - a.lat) * 111000, (b.lon - a.lon) * 111000);
+  for (const points of parsedRoute.segments) {
+    const result = [];
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const a = points[index];
+      const b = points[index + 1];
+      const length = routeDistanceMeters(a, b);
     const nextCumulative = cumulative + length;
-    if (nextCumulative >= startMeters && cumulative <= endMeters && length > 0) {
-      const from = Math.max(0, (startMeters - cumulative) / length);
-      const to = Math.min(1, (endMeters - cumulative) / length);
+      if (nextCumulative >= startDistanceM && cumulative <= endDistanceM && length > 0) {
+        const from = Math.max(0, (startDistanceM - cumulative) / length);
+        const to = Math.min(1, (endDistanceM - cumulative) / length);
       const fromPoint = interpolate([a.lat, a.lon], [b.lat, b.lon], from);
       const toPoint = interpolate([a.lat, a.lon], [b.lat, b.lon], to);
       if (!result.length || result[result.length - 1][0] !== fromPoint[0] || result[result.length - 1][1] !== fromPoint[1]) result.push(fromPoint);
       result.push(toPoint);
+      }
+      cumulative = nextCumulative;
+      if (cumulative > endDistanceM) break;
     }
-    cumulative = nextCumulative;
-    if (cumulative > endMeters) break;
+    if (result.length > 1) lines.push(result);
+    if (cumulative > endDistanceM) break;
   }
-  return result.length > 1 ? [result] : [];
+  return lines;
 }
