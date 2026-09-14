@@ -66,6 +66,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   let failedPoiSections = [];
   let poiPage = 1;
   let activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
+  let activeTab = 'pois';
   const poiMarkers = new Map();
 
   function showError(message) {
@@ -547,6 +548,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   }
 
   function setActiveTab(tab) {
+    activeTab = tab;
     const showPois = tab === 'pois';
     poisTab.classList.toggle('is-active', showPois);
     poisTab.setAttribute('aria-selected', String(showPois));
@@ -554,6 +556,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     routebookTab.setAttribute('aria-selected', String(!showPois));
     poiPanel.hidden = !showPois;
     routebookPanel.hidden = showPois;
+    renderMapPois();
     if (!showPois) renderRoutebook();
   }
 
@@ -601,6 +604,10 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   function renderMapPois() {
     poiLayer.clearLayers();
     poiMarkers.clear();
+    if (activeTab === 'routebook') {
+      currentPois.filter((poi) => selectedPoiIds.has(poiKey(poi))).forEach((poi) => renderPoiMarker(poi));
+      return;
+    }
     const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id));
     const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && selectedPoiIds.has(poiKey(poi))));
     const selected = mapPois.filter((poi) => selectedPoiIds.has(poiKey(poi)));

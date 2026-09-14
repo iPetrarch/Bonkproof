@@ -197,3 +197,11 @@ test('selected POIs stay outside clusters and route layers do not use cluster re
   const mapRenderer = app.match(/function renderMapPois\(\)[\s\S]*?\n  \}\n\n  function renderPois/)[0];
   assert.doesNotMatch(mapRenderer, /routeLayer/);
 });
+
+test('Routebook tab renders only selected POIs without changing map view or querying Overpass', () => {
+  assert.match(app, /let activeTab = 'pois'/);
+  assert.match(app, /if \(activeTab === 'routebook'\)[\s\S]*?selectedPoiIds\.has\(poiKey\(poi\)\)/);
+  assert.match(app, /setActiveTab\(tab\)[\s\S]*?renderMapPois\(\)/);
+  assert.doesNotMatch(app.match(/function setActiveTab\(tab\)[\s\S]*?\n  \}/)[0], /loadPois|fitBounds/);
+  assert.match(app, /function toggleSelection\(poiId\)[\s\S]*?renderMapPois|renderPois/);
+});
