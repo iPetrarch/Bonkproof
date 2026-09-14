@@ -1,4 +1,4 @@
-import { buildRoutebook, buildSupplyWarnings, extractRouteGeometryRange, poiKey, togglePoiSelection } from './routebook.js';
+import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, poiKey, togglePoiSelection } from './routebook.js';
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 
@@ -33,16 +33,13 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   const poiNext = document.getElementById('poi-next');
   const poisTab = document.getElementById('pois-tab');
   const routebookTab = document.getElementById('routebook-tab');
-  const warningsTab = document.getElementById('warnings-tab');
   const poiPanel = document.getElementById('poi-panel');
   const routebookPanel = document.getElementById('routebook-panel');
   const routebookSummary = document.getElementById('routebook-summary');
   const routebookEmpty = document.getElementById('routebook-empty');
   const routebookList = document.getElementById('routebook-list');
-  const warningsPanel = document.getElementById('warnings-panel');
-  const warningsSummary = document.getElementById('warnings-summary');
-  const warningsEmpty = document.getElementById('warnings-empty');
-  const warningsList = document.getElementById('warnings-list');
+  const poiWarningSummary = document.getElementById('poi-warning-summary');
+  const poiWarningList = document.getElementById('poi-warning-list');
   const reloadPois = document.getElementById('reload-pois');
 
   const map = L.map('map', {
@@ -134,6 +131,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     reloadPois.textContent = running
       ? 'POIs werden gesucht…'
       : (failedPoiSections.length > 0 ? 'Fehlgeschlagene Abschnitte erneut laden' : 'POIs neu laden');
+    if (typeof poiWarningSummary !== 'undefined') renderWarnings();
   }
 
   function resetRoutebook() {
@@ -522,7 +520,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     const hasRoute = currentRouteDistanceMeters > 0;
     const hasStops = routebook.stops.length > 0;
     routebookSummary.textContent = hasRoute
-      ? `Longest section without a selected stop: ${formatDistance(routebook.longestGapM)}. Sections over 60 km are highlighted (V0.2 test value).`
+      ? `Planning gaps from the current selection: longest section without a selected stop is ${formatDistance(routebook.longestGapM)}. Sections over 60 km are highlighted (V0.2 test value).`
       : 'Load a route to create a routebook.';
     routebookEmpty.hidden = hasStops || !hasRoute;
     routebookList.innerHTML = '';
@@ -559,21 +557,16 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     activeTab = tab;
     const showPois = tab === 'pois';
     const showRoutebook = tab === 'routebook';
-    const showWarnings = tab === 'warnings';
     poisTab.classList.toggle('is-active', showPois);
     poisTab.setAttribute('aria-selected', String(showPois));
     routebookTab.classList.toggle('is-active', showRoutebook);
     routebookTab.setAttribute('aria-selected', String(showRoutebook));
-    warningsTab.classList.toggle('is-active', showWarnings);
-    warningsTab.setAttribute('aria-selected', String(showWarnings));
     poiPanel.hidden = !showPois;
     routebookPanel.hidden = !showRoutebook;
-    warningsPanel.hidden = !showWarnings;
     renderMapPois();
     renderWarnings();
     renderWarningLayer();
     if (showRoutebook) renderRoutebook();
-    if (showWarnings) renderWarnings();
   }
 
   function clusterIcon(items) {
@@ -608,8 +601,10 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
 
   function renderWarningLayer() {
     warningLayer.clearLayers();
-    if (activeTab !== 'warnings' || !currentParsedRoute) return;
-    const { warnings } = buildSupplyWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters);
+    if (!currentParsedRoute) return;
+    const { warnings } = activeTab === 'routebook'
+      ? buildRoutebookWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters)
+      : buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters);
     warnings.forEach((warning) => {
       const geometry = extractRouteGeometryRange(currentParsedRoute, warning.startMeters, warning.endMeters);
       geometry.forEach((line) => L.polyline(line, { color: '#a33d32', weight: 8, opacity: 0.78, interactive: false }).addTo(warningLayer));
@@ -618,21 +613,17 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
 
   function renderWarnings() {
     if (!currentParsedRoute) {
-      warningsSummary.textContent = 'Load a route to see supply warnings.';
-      warningsEmpty.hidden = false;
-      warningsEmpty.textContent = 'No route loaded yet.';
-      warningsList.hidden = true;
+      poiWarningSummary.hidden = true;
+      poiWarningList.hidden = true;
       renderWarningLayer();
       return;
     }
-    const { warnings, longestGapM } = buildSupplyWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters);
-    warningsSummary.textContent = `${warnings.length} section${warnings.length === 1 ? '' : 's'} over 60 km. Longest gap: ${formatDistance(longestGapM)}. 60 km is the fixed V0.2 test threshold.`;
-    warningsEmpty.hidden = warnings.length > 0;
-    warningsEmpty.textContent = selectedPoiIds.size === 0
-      ? 'No stops selected. The complete route is checked as one section.'
-      : 'No supply section exceeds 60 km.';
-    warningsList.innerHTML = '';
-    warningsList.hidden = warnings.length === 0;
+    const { warnings, longestGapM, foundCount } = buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters);
+    poiWarningSummary.hidden = false;
+    const completeness = poiSearchRunning ? ' Vorläufig: die Suche läuft noch.' : (failedPoiSections.length ? ' Unvollständig: einzelne Abschnitte sind fehlgeschlagen.' : '');
+    poiWarningSummary.textContent = `${warnings.length} gefundene Versorgungslücke${warnings.length === 1 ? '' : 'n'}, längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} POIs innerhalb des Korridors. Near misses zählen nicht.${completeness}`;
+    poiWarningList.innerHTML = '';
+    poiWarningList.hidden = warnings.length === 0;
     warnings.forEach((warning) => {
       const item = document.createElement('li');
       item.className = 'warning-item';
@@ -642,7 +633,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
         const points = geometry.flat();
         if (points.length > 1) map.fitBounds(L.latLngBounds(points), { padding: [36, 36], maxZoom: 13 });
       });
-      warningsList.appendChild(item);
+      poiWarningList.appendChild(item);
     });
     renderWarningLayer();
   }
@@ -662,10 +653,6 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     poiLayer.clearLayers();
     poiMarkers.clear();
     if (activeTab === 'routebook') {
-      currentPois.filter((poi) => selectedPoiIds.has(poiKey(poi))).forEach((poi) => renderPoiMarker(poi));
-      return;
-    }
-    if (activeTab === 'warnings') {
       currentPois.filter((poi) => selectedPoiIds.has(poiKey(poi))).forEach((poi) => renderPoiMarker(poi));
       return;
     }
@@ -878,7 +865,6 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
   });
   poisTab.addEventListener('click', () => setActiveTab('pois'));
   routebookTab.addEventListener('click', () => setActiveTab('routebook'));
-  warningsTab.addEventListener('click', () => setActiveTab('warnings'));
   map.on('zoomend', () => renderMapPois());
 
   ['dragenter', 'dragover'].forEach((type) => {

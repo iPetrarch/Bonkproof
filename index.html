@@ -53,7 +53,6 @@
       <nav class="tabs" aria-label="Route tools">
         <button id="pois-tab" class="tab is-active" type="button" aria-selected="true">POIs</button>
         <button id="routebook-tab" class="tab" type="button" aria-selected="false">Routebook</button>
-          <button id="warnings-tab" class="tab" type="button" aria-selected="false">Warnings</button>
         <button class="tab" type="button" disabled>Export</button>
       </nav>
 
@@ -87,6 +86,8 @@
         </div>
 
         <p id="poi-empty" class="poi-empty" hidden></p>
+        <div id="poi-warning-summary" class="warning-summary" hidden></div>
+        <ol id="poi-warning-list" class="warnings-list" hidden></ol>
         <ol id="poi-list" class="poi-list" hidden></ol>
         <div id="poi-pagination" class="poi-pagination" hidden>
           <span id="poi-page-summary"></span>
@@ -108,14 +109,6 @@
         <ol id="routebook-list" class="routebook-list" hidden></ol>
        </section>
 
-       <section id="warnings-panel" class="warnings-panel" aria-labelledby="warnings-heading" hidden>
-         <div class="panel-heading">
-           <div><p class="eyebrow">v0.2 supply check</p><h2 id="warnings-heading">Warnings</h2></div>
-         </div>
-         <p id="warnings-summary" class="panel-summary">Load a route to see supply warnings.</p>
-         <p id="warnings-empty" class="empty-state">No route loaded yet.</p>
-         <ol id="warnings-list" class="warnings-list" hidden></ol>
-       </section>
     </section>
   </main>
 
