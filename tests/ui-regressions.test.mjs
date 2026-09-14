@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { buildRoutebook, poiKey, togglePoiSelection } from '../routebook.js';
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, paginatePois, retryAfterMilliseconds } from '../poi-search.js';
+import { clusterAccessibleLabel, clusterCategoryCounts, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX } from '../poi-clustering.js';
 
 const [rawApp, rawStyles, rawDeploy, rawIndex] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
@@ -160,7 +161,39 @@ test('pagination and filters do not trigger Overpass and reset page state locall
   assert.match(app, /poiPage = 1;\s*renderPois\(currentPois, currentCategories\)/);
   assert.match(app, /activeCategoryIds = new Set\(INITIAL_CATEGORY_IDS\)/);
   assert.match(app, /selectedPoiIds\.has\(poiKey\(poi\)\)/);
-  assert.match(app, /const mapPois = visiblePois\.concat\(pois\.filter/);
+  assert.match(app, /const mapPois = visiblePois\.concat\(currentPois\.filter/);
   assert.match(index, /class="category-row"[^>]*aria-pressed="true"/);
   assert.match(app, /Keine POI-Kategorie ausgewählt/);
+});
+
+const clusterPois = [
+  { lat: 0, lon: 0, category: { id: 'supermarket' } },
+  { lat: 0, lon: 0.0001, category: { id: 'fuel' } },
+  { lat: 10, lon: 10, category: { id: 'supermarket' } },
+];
+
+test('screen-distance clustering groups nearby POIs and leaves distant POIs separate', () => {
+  const clusters = clusterPoiData(clusterPois, (poi) => ({ x: poi.lon * 100, y: poi.lat * 100 }), POI_CLUSTER_RADIUS_PX);
+  assert.equal(clusters.length, 2);
+  assert.equal(clusters.find((cluster) => cluster.isCluster).items.length, 2);
+  assert.equal(clusters.find((cluster) => !cluster.isCluster).items.length, 1);
+});
+
+test('cluster data supports category rings, accessible labels and unknown fallback', () => {
+  const mixed = clusterPoiData(clusterPois.slice(0, 2), () => ({ x: 10, y: 10 }))[0];
+  assert.deepEqual(clusterCategoryCounts(mixed.items), { supermarket: 1, fuel: 1 });
+  assert.match(clusterRingStyle(mixed.items).background, /conic-gradient/);
+  assert.match(clusterAccessibleLabel(mixed.items), /2 POIs: 1 Supermärkte, 1 Tankstellen/);
+  const unknown = [{ lat: 0, lon: 0, category: { id: 'future' } }];
+  assert.match(clusterRingStyle(unknown).background, /#7a8085/);
+  assert.match(clusterAccessibleLabel(unknown), /Weitere POIs/);
+});
+
+test('selected POIs stay outside clusters and route layers do not use cluster rendering', () => {
+  assert.match(app, /const selected = mapPois\.filter/);
+  assert.match(app, /const clusterable = mapPois\.filter\(\(poi\) => !selectedPoiIds\.has/);
+  assert.match(app, /poiLayer\.clearLayers\(\)/);
+  assert.match(app, /POI_CLUSTER_DISABLE_ZOOM/);
+  const mapRenderer = app.match(/function renderMapPois\(\)[\s\S]*?\n  \}\n\n  function renderPois/)[0];
+  assert.doesNotMatch(mapRenderer, /routeLayer/);
 });

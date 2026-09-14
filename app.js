@@ -1,5 +1,6 @@
 import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from './poi-search.js';
+import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -556,6 +557,72 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from '.
     if (!showPois) renderRoutebook();
   }
 
+  function clusterIcon(items) {
+    const { background } = clusterRingStyle(items);
+    const size = Math.min(56, 38 + Math.round(Math.sqrt(items.length) * 3));
+    const label = clusterAccessibleLabel(items);
+    return L.divIcon({
+      className: 'poi-cluster-icon',
+      html: `<div class="poi-cluster" style="--cluster-size:${size}px;--cluster-ring:${background}" role="img" aria-label="${escapeHtml(label)}"><span>${items.length}</span></div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+  }
+
+  function renderPoiMarker(poi, latLng = [poi.lat, poi.lon]) {
+    const poiId = poiKey(poi);
+    const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
+    const selected = selectedPoiIds.has(poiId);
+    const popup = `
+      <strong>${escapeHtml(poi.name)}</strong><br>
+      ${escapeHtml(poi.category.label)} · km ${poi.routeKm.toFixed(1)}<br>
+      ${Math.round(poi.offRouteM)} m off route · ${statusText}<br>
+      <button type="button" class="popup-selection" data-poi-id="${escapeHtml(poiId)}">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>
+    `;
+    const marker = L.marker(latLng, { icon: poiMarkerIcon(poi), title: poi.name, keyboard: true }).bindPopup(popup).addTo(poiLayer);
+    marker.on('popupopen', () => {
+      const selectionButton = map.getContainer().querySelector(`[data-poi-id="${poiId}"]`);
+      selectionButton?.addEventListener('click', () => toggleSelection(poiId), { once: true });
+    });
+    poiMarkers.set(poiId, marker);
+  }
+
+  function spiderfyCluster(cluster) {
+    const center = map.latLngToLayerPoint([cluster.center.lat, cluster.center.lon]);
+    const radius = Math.max(32, Math.min(70, cluster.items.length * 8));
+    poiLayer.removeLayer(cluster.marker);
+    cluster.items.forEach((poi, index) => {
+      const angle = (index / cluster.items.length) * Math.PI * 2;
+      const point = map.layerPointToLatLng([center.x + Math.cos(angle) * radius, center.y + Math.sin(angle) * radius]);
+      renderPoiMarker(poi, point);
+    });
+  }
+
+  function renderMapPois() {
+    poiLayer.clearLayers();
+    poiMarkers.clear();
+    const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id));
+    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && selectedPoiIds.has(poiKey(poi))));
+    const selected = mapPois.filter((poi) => selectedPoiIds.has(poiKey(poi)));
+    selected.forEach((poi) => renderPoiMarker(poi));
+    const clusterable = mapPois.filter((poi) => !selectedPoiIds.has(poiKey(poi)));
+    const clusters = map.getZoom() >= POI_CLUSTER_DISABLE_ZOOM
+      ? clusterable.map((poi) => ({ items: [poi], isCluster: false, center: { lat: poi.lat, lon: poi.lon } }))
+      : clusterPoiData(clusterable, (poi) => map.latLngToLayerPoint([poi.lat, poi.lon]), POI_CLUSTER_RADIUS_PX);
+    clusters.forEach((cluster) => {
+      if (!cluster.isCluster) {
+        renderPoiMarker(cluster.items[0]);
+        return;
+      }
+      const marker = L.marker([cluster.center.lat, cluster.center.lon], { icon: clusterIcon(cluster.items), title: clusterAccessibleLabel(cluster.items), keyboard: true }).addTo(poiLayer);
+      cluster.marker = marker;
+      marker.on('click', () => {
+        if (map.getZoom() >= POI_CLUSTER_SPIDERFY_ZOOM) spiderfyCluster(cluster);
+        else map.fitBounds(L.latLngBounds(cluster.items.map((poi) => [poi.lat, poi.lon])), { maxZoom: Math.min(map.getMaxZoom(), map.getZoom() + 2), padding: [36, 36] });
+      });
+    });
+  }
+
   function renderPois(pois, categories) {
     currentPois = pois;
     currentCategories = categories;
@@ -564,27 +631,7 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from '.
       .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
     const page = paginatePois(visiblePois, poiPage);
     poiPage = page.page;
-    poiLayer.clearLayers();
-    poiMarkers.clear();
-
-    const mapPois = visiblePois.concat(pois.filter((poi) => !activeCategoryIds.has(poi.category.id) && selectedPoiIds.has(poiKey(poi))));
-    mapPois.forEach((poi) => {
-      const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
-      const poiId = poiKey(poi);
-      const selected = selectedPoiIds.has(poiId);
-      const popup = `
-        <strong>${escapeHtml(poi.name)}</strong><br>
-        ${escapeHtml(poi.category.label)} · km ${poi.routeKm.toFixed(1)}<br>
-        ${Math.round(poi.offRouteM)} m off route · ${statusText}<br>
-        <button type="button" class="popup-selection" data-poi-id="${escapeHtml(poiId)}">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>
-      `;
-      const marker = L.marker([poi.lat, poi.lon], { icon: poiMarkerIcon(poi), title: poi.name }).bindPopup(popup).addTo(poiLayer);
-      marker.on('popupopen', () => {
-        const selectionButton = map.getContainer().querySelector(`[data-poi-id="${poiId}"]`);
-        selectionButton?.addEventListener('click', () => toggleSelection(poiId), { once: true });
-      });
-      poiMarkers.set(poiId, marker);
-    });
+    renderMapPois();
 
     const counts = Object.fromEntries(categories.map((category) => [category.id, 0]));
     pois.forEach((poi) => { counts[poi.category.id] = (counts[poi.category.id] || 0) + 1; });
@@ -763,6 +810,7 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from '.
   });
   poisTab.addEventListener('click', () => setActiveTab('pois'));
   routebookTab.addEventListener('click', () => setActiveTab('routebook'));
+  map.on('zoomend', () => renderMapPois());
 
   ['dragenter', 'dragover'].forEach((type) => {
     window.addEventListener(type, (event) => {
