@@ -186,15 +186,21 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 
 .poi-categories { display: grid; gap: 0.55rem; margin-bottom: 0.8rem; }
 .category-row {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: #f7f0e3;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
   display: grid;
   grid-template-columns: 2.2rem minmax(0, 1fr) auto;
   gap: 0.75rem;
   align-items: center;
   padding: 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 0.55rem;
-  background: #f7f0e3;
 }
+.category-row.is-inactive { opacity: 0.52; background: transparent; }
+.category-row:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
 .category-symbol {
   display: grid;
   width: 2.1rem;
@@ -237,6 +243,11 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 .poi-list-main strong, .poi-list-main small { display: block; }
 .poi-list-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .poi-list-main small { margin-top: 0.16rem; color: var(--ink-soft); }
+.poi-empty { padding: 0.85rem; border: 1px dashed var(--line); border-radius: 0.5rem; background: #f7f0e3; color: var(--ink-soft); }
+.poi-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; margin-top: 0.8rem; color: var(--ink-soft); font-size: 0.8rem; }
+.poi-pagination span:first-child { margin-right: auto; }
+.poi-pagination button { padding: 0.35rem 0.6rem; border: 1px solid var(--line); border-radius: 0.4rem; background: var(--panel); color: var(--ink); cursor: pointer; font-weight: 750; }
+.poi-pagination button:disabled { cursor: not-allowed; opacity: 0.45; }
 .route-km { flex: 0 0 auto; color: var(--route-dark); font-weight: 850; font-variant-numeric: tabular-nums; }
 .poi-selection, .routebook-remove, .popup-selection {
   border: 1px solid #d7b981;

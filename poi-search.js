@@ -2,6 +2,20 @@ export const POI_QUERY_SECTION_MAX_M = 50_000;
 export const POI_QUERY_OVERLAP_M = 1_000;
 export const POI_QUERY_RETRY_DELAY_MS = 350;
 export const POI_RATE_LIMIT_FALLBACK_MS = 30_000;
+export const POI_LIST_PAGE_SIZE = 20;
+
+export function paginatePois(pois, page, pageSize = POI_LIST_PAGE_SIZE) {
+  const totalPages = Math.max(1, Math.ceil(pois.length / pageSize));
+  const currentPage = Math.min(Math.max(1, page), totalPages);
+  const startIndex = pois.length === 0 ? 0 : (currentPage - 1) * pageSize;
+  return {
+    page: currentPage,
+    totalPages,
+    startIndex,
+    endIndex: Math.min(startIndex + pageSize, pois.length),
+    items: pois.slice(startIndex, startIndex + pageSize),
+  };
+}
 
 export function buildPoiQuerySections(parsed, maxMeters = POI_QUERY_SECTION_MAX_M, overlapMeters = POI_QUERY_OVERLAP_M) {
   const points = parsed.segments.flat();

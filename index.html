@@ -69,16 +69,16 @@
         <button id="reload-pois" class="debug-button" type="button" disabled>POIs neu laden</button>
 
         <div id="poi-categories" class="poi-categories" hidden>
-          <div class="category-row" data-category="supermarket">
+          <button class="category-row" type="button" data-category="supermarket" aria-pressed="true">
             <span class="category-symbol" aria-hidden="true">S</span>
             <div><strong>Supermarkets</strong><span id="supermarket-radius" class="category-meta">—</span></div>
             <span id="supermarket-count" class="category-count">0</span>
-          </div>
-          <div class="category-row" data-category="fuel">
+          </button>
+          <button class="category-row" type="button" data-category="fuel" aria-pressed="true">
             <span class="category-symbol fuel" aria-hidden="true">F</span>
             <div><strong>Fuel stations</strong><span id="fuel-radius" class="category-meta">—</span></div>
             <span id="fuel-count" class="category-count">0</span>
-          </div>
+          </button>
         </div>
 
         <div class="poi-legend" aria-label="POI legend" hidden id="poi-legend">
@@ -86,7 +86,14 @@
           <span><i class="legend-dot near"></i> near miss</span>
         </div>
 
+        <p id="poi-empty" class="poi-empty" hidden></p>
         <ol id="poi-list" class="poi-list" hidden></ol>
+        <div id="poi-pagination" class="poi-pagination" hidden>
+          <span id="poi-page-summary"></span>
+          <span id="poi-page-number"></span>
+          <button id="poi-previous" type="button">Zurück</button>
+          <button id="poi-next" type="button">Weiter</button>
+        </div>
       </section>
 
       <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>

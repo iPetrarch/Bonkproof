@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { buildRoutebook, poiKey, togglePoiSelection } from '../routebook.js';
-import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, retryAfterMilliseconds } from '../poi-search.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, paginatePois, retryAfterMilliseconds } from '../poi-search.js';
 
 const [rawApp, rawStyles, rawDeploy, rawIndex] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
@@ -89,6 +89,20 @@ test('POI query sections cover short, exact and long routes with overlap', () =>
   assert.ok(longSections[0].queryEndMeters > longSections[0].coreEndMeters);
 });
 
+test('POI pagination covers zero, one, exact page, overflow and all 52 entries', () => {
+  assert.doesNotMatch(app, /pois\.slice\(0, 30\)/);
+  for (const count of [0, 1, 20, 21, 52]) {
+    const items = Array.from({ length: count }, (_, index) => ({ routeKm: index }));
+    const first = paginatePois(items, 1);
+    assert.equal(first.totalPages, Math.max(1, Math.ceil(count / 20)));
+    assert.ok(first.items.length <= 20);
+    if (count > 20) assert.equal(paginatePois(items, first.totalPages).items.at(-1), items.at(-1));
+  }
+  assert.equal(paginatePois(Array.from({ length: 52 }, (_, index) => index), 1).endIndex, 20);
+  assert.equal(paginatePois(Array.from({ length: 52 }, (_, index) => index), 3).startIndex, 40);
+  assert.equal(paginatePois(Array.from({ length: 52 }, (_, index) => index), 4).page, 3);
+});
+
 test('section requests are sequential and not parallel', () => {
   assert.match(app, /for \(const section of sections\)/);
   assert.doesNotMatch(app, /Promise\.all\(sections/);
@@ -139,4 +153,14 @@ test('reload is disabled before a route, preserves IDs and prevents parallel sea
   assert.match(app, /failedPoiSections\.length > 0/);
   assert.match(app, /if \(section\.index !== sections\.at\(-1\)\?\.index\)/);
   assert.match(app, /Overpass begrenzt derzeit die Anfragen/);
+});
+
+test('pagination and filters do not trigger Overpass and reset page state locally', () => {
+  assert.match(app, /poiNext\.addEventListener\('click', \(\) => \{[\s\S]*?renderPois\(currentPois, currentCategories\)/);
+  assert.match(app, /poiPage = 1;\s*renderPois\(currentPois, currentCategories\)/);
+  assert.match(app, /activeCategoryIds = new Set\(INITIAL_CATEGORY_IDS\)/);
+  assert.match(app, /selectedPoiIds\.has\(poiKey\(poi\)\)/);
+  assert.match(app, /const mapPois = visiblePois\.concat\(pois\.filter/);
+  assert.match(index, /class="category-row"[^>]*aria-pressed="true"/);
+  assert.match(app, /Keine POI-Kategorie ausgewählt/);
 });

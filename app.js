@@ -1,5 +1,5 @@
 import { buildRoutebook, poiKey, togglePoiSelection } from './routebook.js';
-import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois } from './poi-search.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -24,6 +24,12 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
   const fuelCount = document.getElementById('fuel-count');
   const supermarketRadius = document.getElementById('supermarket-radius');
   const fuelRadius = document.getElementById('fuel-radius');
+  const poiEmpty = document.getElementById('poi-empty');
+  const poiPagination = document.getElementById('poi-pagination');
+  const poiPageSummary = document.getElementById('poi-page-summary');
+  const poiPageNumber = document.getElementById('poi-page-number');
+  const poiPrevious = document.getElementById('poi-previous');
+  const poiNext = document.getElementById('poi-next');
   const poisTab = document.getElementById('pois-tab');
   const routebookTab = document.getElementById('routebook-tab');
   const poiPanel = document.getElementById('poi-panel');
@@ -57,6 +63,8 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
   let poiSearchRunning = false;
   let currentPoiSections = [];
   let failedPoiSections = [];
+  let poiPage = 1;
+  let activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
   const poiMarkers = new Map();
 
   function showError(message) {
@@ -96,10 +104,14 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     poiMarkers.clear();
     currentPois = [];
     currentCategories = [];
+    poiPage = 1;
     poiCategories.hidden = true;
     poiLegend.hidden = true;
     poiList.hidden = true;
     poiList.innerHTML = '';
+    poiEmpty.hidden = true;
+    poiEmpty.textContent = '';
+    poiPagination.hidden = true;
     poiTotal.hidden = true;
     poiTotal.textContent = '0';
     supermarketCount.textContent = '0';
@@ -122,12 +134,18 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     renderRoutebook();
   }
 
+  function resetPoiViewState() {
+    poiPage = 1;
+    activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
+  }
+
   function clearRoute() {
     poiAbortController?.abort();
     routeLayer.clearLayers();
     currentParsedRoute = null;
     currentPoiSections = [];
     failedPoiSections = [];
+    resetPoiViewState();
     clearPoiUi();
     resetRoutebook();
     routeCard.hidden = true;
@@ -262,6 +280,7 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     currentParsedRoute = parsed;
     currentPoiSections = buildPoiQuerySections(parsed);
     failedPoiSections = [];
+    resetPoiViewState();
 
     parsed.segments.forEach((segment) => {
       L.polyline(segment.map((point) => [point.lat, point.lon]), {
@@ -540,10 +559,16 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
   function renderPois(pois, categories) {
     currentPois = pois;
     currentCategories = categories;
+    const visiblePois = pois
+      .filter((poi) => activeCategoryIds.has(poi.category.id))
+      .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+    const page = paginatePois(visiblePois, poiPage);
+    poiPage = page.page;
     poiLayer.clearLayers();
     poiMarkers.clear();
 
-    pois.forEach((poi) => {
+    const mapPois = visiblePois.concat(pois.filter((poi) => !activeCategoryIds.has(poi.category.id) && selectedPoiIds.has(poiKey(poi))));
+    mapPois.forEach((poi) => {
       const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
       const poiId = poiKey(poi);
       const selected = selectedPoiIds.has(poiId);
@@ -571,8 +596,13 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     poiCategories.hidden = false;
     poiLegend.hidden = false;
 
+    document.querySelectorAll('.category-row').forEach((button) => {
+      button.setAttribute('aria-pressed', String(activeCategoryIds.has(button.dataset.category)));
+      button.classList.toggle('is-inactive', !activeCategoryIds.has(button.dataset.category));
+    });
+
     poiList.innerHTML = '';
-    pois.slice(0, 30).forEach((poi) => {
+    page.items.forEach((poi) => {
       const item = document.createElement('li');
       item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiKey(poi)) ? 'selected' : ''}`;
       item.innerHTML = `
@@ -586,13 +616,27 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
       item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiKey(poi)));
       poiList.appendChild(item);
     });
-    poiList.hidden = pois.length === 0;
+    poiList.hidden = page.items.length === 0;
+    poiPagination.hidden = visiblePois.length === 0 || page.totalPages <= 1;
+    poiPageSummary.textContent = visiblePois.length === 0 ? '' : `${page.startIndex + 1}–${page.endIndex} von ${visiblePois.length} POIs`;
+    poiPageNumber.textContent = `Seite ${page.page} von ${page.totalPages}`;
+    poiPrevious.disabled = page.page === 1;
+    poiNext.disabled = page.page === page.totalPages;
+    if (activeCategoryIds.size === 0) {
+      poiEmpty.textContent = 'Keine POI-Kategorie ausgewählt.';
+      poiEmpty.hidden = false;
+    } else if (visiblePois.length === 0) {
+      poiEmpty.textContent = 'Keine POIs in den ausgewählten Kategorien gefunden.';
+      poiEmpty.hidden = false;
+    } else {
+      poiEmpty.hidden = true;
+    }
 
-    const nearMissCount = pois.filter((poi) => poi.status === 'near-miss').length;
+    const nearMissCount = visiblePois.filter((poi) => poi.status === 'near-miss').length;
     setPoiStatus(
-      pois.length === 0
+      visiblePois.length === 0
         ? 'No supermarkets or fuel stations were found inside the current route corridors.'
-        : `${pois.length} useful stop${pois.length === 1 ? '' : 's'} found in route order${nearMissCount ? `, including ${nearMissCount} near miss${nearMissCount === 1 ? '' : 'es'}` : ''}.`,
+        : `${visiblePois.length} useful stop${visiblePois.length === 1 ? '' : 's'} found in route order${nearMissCount ? `, including ${nearMissCount} near miss${nearMissCount === 1 ? '' : 'es'}` : ''}.`,
     );
   }
 
@@ -700,6 +744,23 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
   fileInput.addEventListener('change', (event) => loadFile(event.target.files?.[0]));
   replaceRoute.addEventListener('click', () => fileInput.click());
   reloadPois.addEventListener('click', () => currentParsedRoute && loadPois(currentParsedRoute, true, failedPoiSections.length > 0));
+  document.querySelectorAll('.category-row').forEach((button) => {
+    button.addEventListener('click', () => {
+      const categoryId = button.dataset.category;
+      if (activeCategoryIds.has(categoryId)) activeCategoryIds.delete(categoryId);
+      else activeCategoryIds.add(categoryId);
+      poiPage = 1;
+      renderPois(currentPois, currentCategories);
+    });
+  });
+  poiPrevious.addEventListener('click', () => {
+    poiPage -= 1;
+    renderPois(currentPois, currentCategories);
+  });
+  poiNext.addEventListener('click', () => {
+    poiPage += 1;
+    renderPois(currentPois, currentCategories);
+  });
   poisTab.addEventListener('click', () => setActiveTab('pois'));
   routebookTab.addEventListener('click', () => setActiveTab('routebook'));
 
