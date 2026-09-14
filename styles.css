@@ -321,3 +321,9 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
   .sheet-handle { display: none; }
   .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.warnings-panel { padding: 1.25rem; }
+.warnings-list { display: grid; gap: .75rem; list-style: none; margin: 1rem 0 0; padding: 0; }
+.warning-item { align-items: center; background: color-mix(in srgb, var(--danger) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); border-radius: .65rem; display: flex; gap: 1rem; justify-content: space-between; padding: .8rem 1rem; }
+.warning-item small { color: var(--muted); display: block; margin-top: .2rem; }
+.warning-focus { border: 1px solid var(--danger); border-radius: .4rem; color: var(--danger); cursor: pointer; padding: .35rem .6rem; }

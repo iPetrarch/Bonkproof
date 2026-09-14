@@ -53,7 +53,7 @@
       <nav class="tabs" aria-label="Route tools">
         <button id="pois-tab" class="tab is-active" type="button" aria-selected="true">POIs</button>
         <button id="routebook-tab" class="tab" type="button" aria-selected="false">Routebook</button>
-        <button class="tab" type="button" disabled>Warnings</button>
+          <button id="warnings-tab" class="tab" type="button" aria-selected="false">Warnings</button>
         <button class="tab" type="button" disabled>Export</button>
       </nav>
 
@@ -96,7 +96,7 @@
         </div>
       </section>
 
-      <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>
+       <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>
         <div class="panel-heading">
           <div>
             <p class="eyebrow">v0.2 routebook test</p>
@@ -106,7 +106,16 @@
         <p id="routebook-summary" class="status-copy"></p>
         <div id="routebook-empty" class="routebook-empty">Choose POIs in the POIs tab to build your routebook.</div>
         <ol id="routebook-list" class="routebook-list" hidden></ol>
-      </section>
+       </section>
+
+       <section id="warnings-panel" class="warnings-panel" aria-labelledby="warnings-heading" hidden>
+         <div class="panel-heading">
+           <div><p class="eyebrow">v0.2 supply check</p><h2 id="warnings-heading">Warnings</h2></div>
+         </div>
+         <p id="warnings-summary" class="panel-summary">Load a route to see supply warnings.</p>
+         <p id="warnings-empty" class="empty-state">No route loaded yet.</p>
+         <ol id="warnings-list" class="warnings-list" hidden></ol>
+       </section>
     </section>
   </main>
 

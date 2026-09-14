@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { buildRoutebook, poiKey, togglePoiSelection } from '../routebook.js';
+import { buildRoutebook, buildSupplyWarnings, extractRouteGeometryRange, poiKey, togglePoiSelection } from '../routebook.js';
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, paginatePois, retryAfterMilliseconds } from '../poi-search.js';
 import { clusterAccessibleLabel, clusterCategoryCounts, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX } from '../poi-clustering.js';
 
@@ -74,6 +74,31 @@ test('gaps over 60 km are marked and a new route resets the selection', () => {
   assert.equal(routebook.entries.at(-1).isLongGap, true);
   assert.match(app, /function renderRoute\(parsed, fileName\)[\s\S]*?selectedPoiIds = new Set\(\);/);
   assert.match(styles, /\.routebook-item\.long-gap/);
+});
+
+test('warnings derive ordered gaps, including start and finish, at the fixed 60 km threshold', () => {
+  const pois = [
+    { osmType: 'node', osmId: 1, routeKm: 10, offRouteM: 20, name: 'A' },
+    { osmType: 'node', osmId: 2, routeKm: 90, offRouteM: 20, name: 'B' },
+  ];
+  const result = buildSupplyWarnings(pois, new Set(['node/1', 'node/2']), 150000);
+  assert.deepEqual(result.warnings.map((warning) => [warning.from, warning.to, warning.lengthM]), [['A', 'B', 80000]]);
+  assert.equal(buildSupplyWarnings([], new Set(), 61000).warnings.length, 1);
+  assert.equal(buildSupplyWarnings([], new Set(), 60000).warnings.length, 0);
+});
+
+test('warning geometry follows the actual route points', () => {
+  const geometry = extractRouteGeometryRange({ segments: [[{ lat: 0, lon: 0 }, { lat: 0, lon: 1 }, { lat: 1, lon: 1 }]] }, 0, 200000);
+  assert.equal(geometry.length, 1);
+  assert.ok(geometry[0].some(([lat, lon]) => lat === 0 && lon === 1));
+});
+
+test('warnings tab has a dedicated panel and warning layer without route reloads', () => {
+  assert.match(index, /id="warnings-tab"[^>]*aria-selected="false"/);
+  assert.match(index, /id="warnings-panel"/);
+  assert.match(app, /const warningLayer = L\.featureGroup\(\)\.addTo\(map\)/);
+  assert.match(app, /warningsTab\.addEventListener\('click', \(\) => setActiveTab\('warnings'\)\)/);
+  assert.match(app, /function renderWarningLayer\(\)/);
 });
 
 function routeOfKm(kilometres) {
