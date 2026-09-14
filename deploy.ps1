@@ -164,6 +164,9 @@ if ($config.ContainsKey('PortNumber') -and $config.PortNumber) {
 }
 
 $session = New-Object WinSCP.Session
+if ($config.ContainsKey('WinScpExecutablePath') -and $config.WinScpExecutablePath) {
+    $session.ExecutablePath = [string]$config.WinScpExecutablePath
+}
 try {
     $session.Open($sessionOptions)
 
