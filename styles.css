@@ -47,6 +47,8 @@ button, label { -webkit-tap-highlight-color: transparent; }
 }
 .topbar > * { pointer-events: auto; }
 .topbar > div {
+  /* Leave the Leaflet zoom buttons (10px + 30px wide) clear at the top left. */
+  margin-left: 2.5rem;
   padding: 0.75rem 0.9rem;
   border-left: 5px solid var(--ochre);
   border-radius: 0.65rem;
@@ -95,6 +97,7 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
   pointer-events: none;
 }
 .empty-state.is-dragging { background: rgba(214, 144, 47, 0.2); }
+.empty-state[hidden] { display: none; }
 .empty-card {
   width: min(440px, 100%);
   padding: 1.4rem;
