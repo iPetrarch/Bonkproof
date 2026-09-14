@@ -55,6 +55,8 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
   let currentRouteDistanceMeters = 0;
   let currentParsedRoute = null;
   let poiSearchRunning = false;
+  let currentPoiSections = [];
+  let failedPoiSections = [];
   const poiMarkers = new Map();
 
   function showError(message) {
@@ -68,6 +70,25 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
 
   function setPoiStatus(message) {
     poiStatus.textContent = message;
+  }
+
+  function waitForPoiBackoff(milliseconds, section, signal, rateLimited = false) {
+    const totalSeconds = Math.ceil(milliseconds / 1000);
+    const label = rateLimited ? 'Overpass begrenzt derzeit die Anfragen.' : 'Neuer Versuch wird vorbereitet.';
+    setPoiStatus(`${label} Abschnitt ${section.index} von ${section.total}: neuer Versuch in ${totalSeconds} Sekunden.`);
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, Math.ceil((milliseconds - elapsed) / 1000));
+        if (signal?.aborted || remaining <= 0) {
+          clearInterval(timer);
+          resolve();
+        } else {
+          setPoiStatus(`${label} Abschnitt ${section.index} von ${section.total}: neuer Versuch in ${remaining} Sekunden.`);
+        }
+      }, 1000);
+    });
   }
 
   function clearPoiUi() {
@@ -90,7 +111,9 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
   function setPoiSearchRunning(running) {
     poiSearchRunning = running;
     reloadPois.disabled = running || !currentParsedRoute;
-    reloadPois.textContent = running ? 'POIs werden gesucht…' : 'POIs neu laden';
+    reloadPois.textContent = running
+      ? 'POIs werden gesucht…'
+      : (failedPoiSections.length > 0 ? 'Fehlgeschlagene Abschnitte erneut laden' : 'POIs neu laden');
   }
 
   function resetRoutebook() {
@@ -103,6 +126,8 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     poiAbortController?.abort();
     routeLayer.clearLayers();
     currentParsedRoute = null;
+    currentPoiSections = [];
+    failedPoiSections = [];
     clearPoiUi();
     resetRoutebook();
     routeCard.hidden = true;
@@ -235,6 +260,8 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     selectedPoiIds = new Set();
     currentRouteDistanceMeters = parsed.distanceMeters;
     currentParsedRoute = parsed;
+    currentPoiSections = buildPoiQuerySections(parsed);
+    failedPoiSections = [];
 
     parsed.segments.forEach((segment) => {
       L.polyline(segment.map((point) => [point.lat, point.lon]), {
@@ -339,6 +366,7 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     if (!response.ok) {
       const error = new Error(`OpenStreetMap POI lookup failed (${response.status}).`);
       error.status = response.status;
+      error.retryAfter = response.headers.get('Retry-After');
       throw error;
     }
 
@@ -568,14 +596,15 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
     );
   }
 
-  async function loadPois(parsed, preserveSelection = false) {
+  async function loadPois(parsed, preserveSelection = false, retryFailedOnly = false) {
     if (poiSearchRunning) return;
     const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
+    const sectionsToQuery = retryFailedOnly ? failedPoiSections : currentPoiSections;
     setPoiSearchRunning(true);
     poiAbortController?.abort();
     poiAbortController = new AbortController();
     const { signal } = poiAbortController;
-    clearPoiUi();
+    if (!retryFailedOnly) clearPoiUi();
     selectedPoiIds = previousSelection;
     setPoiStatus('Reading POI configuration…');
 
@@ -596,17 +625,24 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
       });
       poiCategories.hidden = false;
       const geometry = buildRouteGeometry(parsed);
-      const deduped = new Map();
-      const sections = buildPoiQuerySections(parsed);
+      const deduped = new Map((retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]));
+      const sections = sectionsToQuery;
       const failedSections = [];
       for (const section of sections) {
         if (signal.aborted) return;
         setPoiStatus(`POIs werden gesucht: Abschnitt ${section.index} von ${section.total}`);
         try {
+          let rateLimited = false;
           const candidates = await fetchPoiSectionWithRetry(
             (currentSection, currentSignal) => fetchOsmCandidates(categories, currentSection, config, currentSignal),
             section,
-            { signal },
+            {
+              signal,
+              onBackoff: (delay, error) => {
+                rateLimited = Number(error?.status) === 429;
+              },
+              sleep: (delay) => waitForPoiBackoff(delay, section, signal, rateLimited),
+            },
           );
           if (!candidates) return;
           candidates.forEach((element) => {
@@ -621,10 +657,12 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
           failedSections.push(section.index);
           console.error(error);
         }
+        if (section.index !== sections.at(-1)?.index) await waitForPoiBackoff(2500, section, signal);
       }
 
       const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
       selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
+      failedPoiSections = failedSections.map((index) => currentPoiSections.find((section) => section.index === index)).filter(Boolean);
       renderPois(pois, categories);
       setPoiStatus(
         failedSections.length > 0
@@ -661,7 +699,7 @@ import { buildPoiQuerySections, fetchPoiSectionWithRetry } from './poi-search.js
 
   fileInput.addEventListener('change', (event) => loadFile(event.target.files?.[0]));
   replaceRoute.addEventListener('click', () => fileInput.click());
-  reloadPois.addEventListener('click', () => currentParsedRoute && loadPois(currentParsedRoute, true));
+  reloadPois.addEventListener('click', () => currentParsedRoute && loadPois(currentParsedRoute, true, failedPoiSections.length > 0));
   poisTab.addEventListener('click', () => setActiveTab('pois'));
   routebookTab.addEventListener('click', () => setActiveTab('routebook'));
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { buildRoutebook, poiKey, togglePoiSelection } from '../routebook.js';
-import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus } from '../poi-search.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, retryAfterMilliseconds } from '../poi-search.js';
 
 const [rawApp, rawStyles, rawDeploy, rawIndex] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
@@ -109,6 +109,12 @@ test('retry handles one transient gateway failure only', async () => {
   assert.equal(isRetryablePoiStatus(500), false);
 });
 
+test('429 Retry-After supports seconds, dates and the 30 second fallback', () => {
+  assert.equal(retryAfterMilliseconds('12'), 12000);
+  assert.equal(retryAfterMilliseconds('invalid', 30000), 30000);
+  assert.equal(retryAfterMilliseconds(new Date(11000).toUTCString(), 30000, 10000), 1000);
+});
+
 test('non-transient errors and repeated transient errors are not retried', async () => {
   let calls = 0;
   await assert.rejects(() => fetchPoiSectionWithRetry(async () => {
@@ -127,6 +133,10 @@ test('non-transient errors and repeated transient errors are not retried', async
 test('reload is disabled before a route, preserves IDs and prevents parallel searches', () => {
   assert.match(index, /id="reload-pois"[^>]*disabled/);
   assert.match(app, /if \(poiSearchRunning\) return;/);
-  assert.match(app, /loadPois\(currentParsedRoute, true\)/);
+  assert.match(app, /loadPois\(currentParsedRoute, true, failedPoiSections\.length > 0\)/);
   assert.match(app, /selectedPoiIds = new Set\(\[\.\.\.selectedPoiIds\].*poiKey\(poi\)/s);
+  assert.match(app, /waitForPoiBackoff\(2500/);
+  assert.match(app, /failedPoiSections\.length > 0/);
+  assert.match(app, /if \(section\.index !== sections\.at\(-1\)\?\.index\)/);
+  assert.match(app, /Overpass begrenzt derzeit die Anfragen/);
 });

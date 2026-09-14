@@ -1,6 +1,7 @@
 export const POI_QUERY_SECTION_MAX_M = 50_000;
 export const POI_QUERY_OVERLAP_M = 1_000;
 export const POI_QUERY_RETRY_DELAY_MS = 350;
+export const POI_RATE_LIMIT_FALLBACK_MS = 30_000;
 
 export function buildPoiQuerySections(parsed, maxMeters = POI_QUERY_SECTION_MAX_M, overlapMeters = POI_QUERY_OVERLAP_M) {
   const points = parsed.segments.flat();
@@ -41,19 +42,32 @@ export function isRetryablePoiStatus(status) {
   return [502, 503, 504].includes(Number(status));
 }
 
+export function retryAfterMilliseconds(value, fallback = POI_RATE_LIMIT_FALLBACK_MS, now = Date.now()) {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value * 1000;
+  const text = String(value ?? '').trim();
+  if (/^\d+(?:\.\d+)?$/.test(text)) return Number(text) * 1000;
+  const date = Date.parse(text);
+  return Number.isFinite(date) ? Math.max(0, date - now) : fallback;
+}
+
 export async function fetchPoiSectionWithRetry(fetchSection, section, {
   signal,
   wait = POI_QUERY_RETRY_DELAY_MS,
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  onBackoff = () => {},
+  rateLimitFallback = POI_RATE_LIMIT_FALLBACK_MS,
 } = {}) {
   let retried = false;
   while (true) {
     try {
       return await fetchSection(section, signal);
     } catch (error) {
-      if (retried || !isRetryablePoiStatus(error?.status)) throw error;
+      const rateLimited = Number(error?.status) === 429;
+      if (retried || (!rateLimited && !isRetryablePoiStatus(error?.status))) throw error;
       retried = true;
-      await sleep(wait);
+      const delay = rateLimited ? retryAfterMilliseconds(error?.retryAfter, rateLimitFallback) : wait;
+      onBackoff(delay, error);
+      await sleep(delay);
       if (signal?.aborted) return null;
     }
   }
