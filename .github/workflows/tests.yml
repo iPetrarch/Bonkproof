@@ -25,6 +25,14 @@ jobs:
       - name: Apply pinning patch on development branch
         if: github.ref == 'refs/heads/chatgpt/pinned-pois' && github.actor != 'github-actions[bot]'
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tools/apply-pinning-patch.py')
+          text = p.read_text()
+          text = text.replace('          <button type=\\"button\\" class=\\"popup-selection\\" data-poi-id=\\"${escapeHtml(poiId)}\\">', '      <button type=\\"button\\" class=\\"popup-selection\\" data-poi-id=\\"${escapeHtml(poiId)}\\">')
+          text = text.replace('          ${jumpButton}', '      ${jumpButton}')
+          p.write_text(text)
+          PY
           python tools/apply-pinning-patch.py
           if git diff --quiet -- app.js styles.css tests/pinned-pois.test.mjs; then
             exit 0
