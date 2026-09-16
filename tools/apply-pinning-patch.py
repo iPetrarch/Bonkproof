@@ -1,45 +1,70 @@
 from pathlib import Path
 
-path = Path('app.js')
-text = path.read_text()
+app_path = Path('app.js')
+text = app_path.read_text()
 
 replacements = [
-("  let selectedPoiIds = new Set();\n", "  let selectedPoiIds = new Set();\n  let pinnedPoiIds = new Set();\n  let pinnedPoiSnapshots = new Map();\n", 1),
-("    selectedPoiIds = new Set();\n    currentRouteDistanceMeters = parsed.distanceMeters;", "    selectedPoiIds = new Set();\n    pinnedPoiIds = new Set();\n    pinnedPoiSnapshots = new Map();\n    currentRouteDistanceMeters = parsed.distanceMeters;", 1),
-("  function toggleSelection(poiId) {\n    selectedPoiIds = togglePoiSelection(selectedPoiIds, poiId);\n    renderPois(currentPois, currentCategories);\n    renderRoutebook();\n    renderWarnings();\n  }\n", "  function toggleSelection(poiId) {\n    selectedPoiIds = togglePoiSelection(selectedPoiIds, poiId);\n    renderPois(currentPois, currentCategories);\n    renderRoutebook();\n    renderWarnings();\n  }\n\n  function togglePin(poi) {\n    const poiId = poiKey(poi);\n    if (pinnedPoiIds.has(poiId)) {\n      pinnedPoiIds.delete(poiId);\n      pinnedPoiSnapshots.delete(poiId);\n      if (poi.status === 'pinned') currentPois = currentPois.filter((candidate) => poiKey(candidate) !== poiId);\n    } else {\n      pinnedPoiIds.add(poiId);\n      pinnedPoiSnapshots.set(poiId, { ...poi });\n    }\n    renderPois(currentPois, currentCategories);\n    renderRoutebook();\n    renderWarnings();\n  }\n", 1),
-("    const selectedClass = selectedPoiIds.has(poiKey(poi)) ? 'selected' : '';\n", "    const poiId = poiKey(poi);\n    const selectedClass = selectedPoiIds.has(poiId) ? 'selected' : '';\n    const pinnedClass = pinnedPoiIds.has(poiId) ? 'pinned' : '';\n", 1),
-("      html: `<div class=\"poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.category.id} ${selectedClass}\" aria-hidden=\"true\">${escapeHtml(label)}</div>`,", "      html: `<div class=\"poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.status === 'pinned' ? 'pinned-outside' : ''} ${poi.category.id} ${selectedClass} ${pinnedClass}\" aria-hidden=\"true\">${escapeHtml(label)}</div>`,", 1),
-("    const selected = selectedPoiIds.has(poiId);\n", "    const selected = selectedPoiIds.has(poiId);\n    const pinned = pinnedPoiIds.has(poiId);\n", 1),
-("      ? `<button type=\"button\" class=\"popup-selection popup-pass-jump\" data-pass-jump=\"${escapeHtml(poiId)}\">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>`\n      : '';", "      ? `<button type=\"button\" class=\"popup-selection popup-pass-jump\" data-pass-jump=\"${escapeHtml(poiId)}\">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>`\n      : '';\n    const pinButton = `<button type=\"button\" class=\"popup-selection popup-pin\" data-pin-id=\"${escapeHtml(poiId)}\">${pinned ? 'Pin lösen' : 'POI behalten'}</button>`;", 1),
-("          <button type=\"button\" class=\"popup-selection\" data-poi-id=\"${escapeHtml(poiId)}\">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>\n          ${jumpButton}", "          <button type=\"button\" class=\"popup-selection\" data-poi-id=\"${escapeHtml(poiId)}\">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>\n          ${pinButton}\n          ${jumpButton}", 1),
-("      const passButton = map.getContainer().querySelector(`[data-pass-jump=\"${poiId}\"]`);\n      passButton?.addEventListener('click', () => jumpToPassBy(poi), { once: true });", "      const pinButton = map.getContainer().querySelector(`[data-pin-id=\"${poiId}\"]`);\n      pinButton?.addEventListener('click', () => togglePin(poi), { once: true });\n      const passButton = map.getContainer().querySelector(`[data-pass-jump=\"${poiId}\"]`);\n      passButton?.addEventListener('click', () => jumpToPassBy(poi), { once: true });", 1),
-("    const visible = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id));\n    return filterReliableResupplyPois(visible, resupplyProfile);", "    const visible = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id) && poi.status !== 'pinned');\n    return filterReliableResupplyPois(visible, resupplyProfile);", 1),
-("    const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id));\n", "    const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id) || pinnedPoiIds.has(poiKey(poi)));\n", 1),
-("      .filter((poi) => activeCategoryIds.has(poi.category.id))\n", "      .filter((poi) => activeCategoryIds.has(poi.category.id) || pinnedPoiIds.has(poiKey(poi)))\n", 1),
-("      const item = document.createElement('li');\n      item.dataset.poiId = poiId;", "      const pinned = pinnedPoiIds.has(poiId);\n      const item = document.createElement('li');\n      item.dataset.poiId = poiId;", 1),
-("          ${nextPass ? `<button type=\"button\" class=\"poi-pass-jump\">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>` : ''}\n        </div>\n        <button type=\"button\" class=\"poi-selection\">${selectedPoiIds.has(poiId) ? 'Remove' : 'Add'}</button>", "          ${nextPass ? `<button type=\"button\" class=\"poi-pass-jump\">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>` : ''}\n        </div>\n        <button type=\"button\" class=\"poi-pin\">${pinned ? 'Pin lösen' : 'Behalten'}</button>\n        <button type=\"button\" class=\"poi-selection\">${selectedPoiIds.has(poiId) ? 'Remove' : 'Add'}</button>", 1),
-("      item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiId));\n", "      item.querySelector('.poi-pin').addEventListener('click', () => togglePin(poi));\n      item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiId));\n", 1),
-("    const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();\n", "    const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();\n    const previousPins = preserveSelection ? new Set(pinnedPoiIds) : new Set();\n    const previousPinnedSnapshots = preserveSelection\n      ? new Map(currentPois.filter((poi) => previousPins.has(poiKey(poi))).map((poi) => [poiKey(poi), { ...poi }]))\n      : new Map();\n", 1),
-("    selectedPoiIds = previousSelection;\n", "    selectedPoiIds = previousSelection;\n    pinnedPoiIds = previousPins;\n    pinnedPoiSnapshots = previousPinnedSnapshots;\n", 1),
-("      const deduped = new Map((retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]));\n", "      const pinnedFallbacks = [...pinnedPoiSnapshots.entries()].map(([id, poi]) => [id, { ...poi, status: 'pinned' }]);\n      const deduped = new Map([...(retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);\n", 1),
-("              if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);\n", "              if (!existing || existing.status === 'pinned' || poi.offRouteM < existing.offRouteM) {\n                deduped.set(key, poi);\n                if (pinnedPoiIds.has(key)) pinnedPoiSnapshots.set(key, { ...poi });\n              }\n", 1),
-("      selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));\n", "      selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));\n      pinnedPoiIds = new Set([...pinnedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));\n", 1),
+    (
+        "    const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';",
+        "    const statusText = poi.status === 'near-miss' ? 'Near miss' : (poi.status === 'pinned' ? 'Behalten aus vorheriger Suche' : 'Inside corridor');",
+    ),
+    (
+        "    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && selectedPoiIds.has(poiKey(poi))));",
+        "    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && !pinnedPoiIds.has(poiKey(poi)) && selectedPoiIds.has(poiKey(poi))));",
+    ),
+    (
+        "      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;",
+        "      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${pinned ? 'pinned' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;",
+    ),
+    (
+        "    if (activeCategoryIds.size === 0) {\n      poiEmpty.textContent = 'Keine POI-Kategorie ausgewählt.';\n      poiEmpty.hidden = false;",
+        "    if (activeCategoryIds.size === 0 && visiblePois.length === 0) {\n      poiEmpty.textContent = 'Keine POI-Kategorie ausgewählt.';\n      poiEmpty.hidden = false;",
+    ),
+    (
+        "        ? (activeCategoryIds.size === 0 ? 'Keine POI-Kategorie ausgewählt.' : 'No POIs were found in the enabled categories inside the current route corridors.')",
+        "        ? (activeCategoryIds.size === 0 ? 'Keine POI-Kategorie ausgewählt.' : 'No POIs were found in the enabled categories inside the current route corridors.')",
+    ),
+    (
+        "      if (categories.length === 0) {\n        failedPoiSections = [];\n        poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: true };\n        renderPois([], config.categories);\n        return;\n      }",
+        "      if (categories.length === 0) {\n        failedPoiSections = [];\n        poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: true };\n        const pinnedFallbacks = [...pinnedPoiSnapshots.values()].map((poi) => ({ ...poi, status: 'pinned' }));\n        renderPois(pinnedFallbacks, config.categories);\n        return;\n      }",
+    ),
 ]
 
-for old, new, count in replacements:
-    if text.count(old) < count:
+for old, new in replacements:
+    if old == new:
+        continue
+    if old not in text:
         raise SystemExit(f'Missing expected app.js fragment: {old[:120]!r}')
-    text = text.replace(old, new, count)
+    text = text.replace(old, new, 1)
 
-path.write_text(text)
+app_path.write_text(text)
 
-# Add concise styling for pin state.
-style_path = Path('styles.css')
-styles = style_path.read_text()
-if '.poi-pin' not in styles:
-    styles += """\n\n.poi-pin, .popup-pin {\n  font: inherit;\n}\n\n.poi-marker.pinned {\n  outline: 3px solid rgba(23, 73, 92, 0.45);\n  outline-offset: 2px;\n}\n\n.poi-marker.pinned-outside {\n  opacity: 0.72;\n}\n"""
-style_path.write_text(styles)
+test_path = Path('tests/ui-regressions.test.mjs')
+tests = test_path.read_text()
+old = "  assert.match(app, /const deduped = new Map\\(\\(retryFailedOnly \\? currentPois : \\[\\]\\)/);"
+new = "  assert.match(app, /const pinnedFallbacks = \\[\\.\\.\\.pinnedPoiSnapshots\\.entries\\(\\)\\]/);\n  assert.match(app, /const deduped = new Map\\(\\[\\.\\.\\.\\(retryFailedOnly \\? currentPois : \\[\\]\\)\\.map/);"
+if old not in tests:
+    raise SystemExit('Missing old retry dedupe assertion')
+tests = tests.replace(old, new, 1)
+test_path.write_text(tests)
 
-# Regression tests for user-visible pinning and search preservation.
-test_path = Path('tests/pinned-pois.test.mjs')
-test_path.write_text("""import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport fs from 'node:fs';\n\nconst app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');\nconst styles = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');\n\ntest('pin state is distinct from routebook selection', () => {\n  assert.match(app, /let pinnedPoiIds = new Set\\(\\)/);\n  assert.match(app, /function togglePin\\(poi\\)/);\n  assert.match(app, /data-pin-id/);\n  assert.match(app, /class=\\\"poi-pin\\\"/);\n});\n\ntest('pinned snapshots survive refreshed searches and fresh results replace fallbacks', () => {\n  assert.match(app, /previousPinnedSnapshots/);\n  assert.match(app, /status: 'pinned'/);\n  assert.match(app, /existing\\.status === 'pinned'/);\n  assert.match(app, /pinnedPoiSnapshots\\.set\\(key, \\{ \\.\\.\\.poi \\}\\)/);\n});\n\ntest('pinned POIs remain visible but do not automatically close found-resupply gaps', () => {\n  assert.match(app, /activeCategoryIds\\.has\\(poi\\.category\\.id\\) \\|\\| pinnedPoiIds\\.has\\(poiKey\\(poi\\)\\)/);\n  assert.match(app, /poi\\.status !== 'pinned'/);\n  assert.match(styles, /\\.poi-marker\\.pinned/);\n});\n\ntest('new routes reset pins', () => {\n  assert.match(app, /pinnedPoiIds = new Set\\(\\);\\s*pinnedPoiSnapshots = new Map\\(\\);\\s*currentRouteDistanceMeters = parsed\\.distanceMeters/);\n});\n""")
+pin_test_path = Path('tests/pinned-pois.test.mjs')
+pin_tests = pin_test_path.read_text()
+extra = """
+
+test('pins survive when every category is disabled', () => {
+  assert.match(app, /if \(categories\.length === 0\)[\s\S]*pinnedFallbacks[\s\S]*renderPois\(pinnedFallbacks, config\.categories\)/);
+});
+
+test('pinned and selected POIs are not duplicated on the map', () => {
+  assert.match(app, /!pinnedPoiIds\.has\(poiKey\(poi\)\) && selectedPoiIds\.has\(poiKey\(poi\)\)/);
+});
+
+test('pinned fallbacks are labelled distinctly from current corridor matches', () => {
+  assert.match(app, /poi\.status === 'pinned' \? 'Behalten aus vorheriger Suche'/);
+  assert.match(app, /\$\{pinned \? 'pinned' : ''\}/);
+});
+"""
+if "pins survive when every category is disabled" not in pin_tests:
+    pin_tests += extra
+pin_test_path.write_text(pin_tests)
