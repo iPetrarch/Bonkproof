@@ -2,25 +2,21 @@
 
 Bonkproof can be deployed manually from GitHub Actions without a local WinSCP setup.
 
+The non-secret production connection settings are part of the workflow:
+
+- Host: `ssh.petrarch.de`
+- User: `petrarch.de`
+- Port: `22`
+- Remote path: `/customers/e/4/0/petrarch.de/httpd.www/bonkproof`
+
 ## Required repository secrets
 
 Create these under **Settings → Secrets and variables → Actions → Secrets**:
 
-- `BONKPROOF_SFTP_HOST`
-- `BONKPROOF_SFTP_USER`
 - `BONKPROOF_SFTP_PASSWORD`
 - `BONKPROOF_SFTP_HOSTKEY`
-- `BONKPROOF_SFTP_REMOTE_PATH`
 
-The host key must use the WinSCP-compatible fingerprint already used by the local deployment profile. `BONKPROOF_SFTP_REMOTE_PATH` must point to the Bonkproof directory only.
-
-## Optional repository variable
-
-Under **Settings → Secrets and variables → Actions → Variables** you may set:
-
-- `BONKPROOF_SFTP_PORT`
-
-If omitted, the workflow uses port `22`.
+`BONKPROOF_SFTP_HOSTKEY` must contain the complete WinSCP-compatible SSH host-key fingerprint already used by the working TrackKin deployment. Do not store either value in the repository.
 
 ## Run a deployment
 
