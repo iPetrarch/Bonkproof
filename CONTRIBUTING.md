@@ -17,6 +17,16 @@ Please open or comment on a GitHub Issue before starting a larger feature. Small
 - Add or update tests for behaviour changes where feasible.
 - Keep changes small enough to review.
 
+## Tests
+
+Run the regression suite before opening or updating a pull request:
+
+```sh
+npm test
+```
+
+The same command runs in GitHub Actions for pull requests and relevant branch pushes. Browser-, Overpass- and deployment-dependent behaviour still needs the appropriate manual or webserver verification; a green Node.js test run does not replace those checks.
+
 ## Commit and pull request style
 
 Clear, descriptive commit messages are preferred. Pull requests should briefly explain what changed, why it changed and how it was tested.
