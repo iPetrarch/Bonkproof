@@ -127,6 +127,16 @@ export function buildRoutebook(pois, selectedPoiIds, routeDistanceMeters, gapCon
   };
 }
 
+function gapMetadata(startMeters, endMeters) {
+  return {
+    gapType: 'resupply',
+    startMeters,
+    endMeters,
+    startKm: startMeters / 1000,
+    endKm: endMeters / 1000,
+  };
+}
+
 function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig = ROUTEBOOK_GAP_WARNING_M) {
   const routebook = buildRoutebook(pois, selectedPoiIds, routeDistanceMeters, gapConfig);
   const warnings = routebook.entries.slice(1)
@@ -135,8 +145,7 @@ function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig =
     .map(({ entry, previous }) => ({
       from: previous.kind === 'stop' ? previous.poi.name : 'Start',
       to: entry.kind === 'stop' ? entry.poi.name : 'Ziel',
-      startMeters: previous.routeMeters,
-      endMeters: entry.routeMeters,
+      ...gapMetadata(previous.routeMeters, entry.routeMeters),
       lengthM: entry.distanceFromPreviousM,
       severity: entry.gapSeverity,
     }));
@@ -164,8 +173,7 @@ export function buildFoundPoiWarnings(pois, routeDistanceMeters, gapConfig = ROU
     return {
       from: from.name,
       to: to.name,
-      startMeters: from.routeMeters,
-      endMeters: to.routeMeters,
+      ...gapMetadata(from.routeMeters, to.routeMeters),
       lengthM,
       severity: severity.classify(lengthM),
     };
