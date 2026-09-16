@@ -64,21 +64,10 @@
           </div>
           <span id="poi-total" class="count-badge" hidden>0</span>
         </div>
-        <p id="poi-status" class="status-copy">Load a GPX route. Bonkproof will then look for supermarkets and fuel stations near the route.</p>
+        <p id="poi-status" class="status-copy">Load a GPX route. Bonkproof will then look for the enabled POI categories near the route.</p>
         <button id="reload-pois" class="debug-button" type="button" disabled>POIs neu laden</button>
 
-        <div id="poi-categories" class="poi-categories" hidden>
-          <button class="category-row" type="button" data-category="supermarket" aria-pressed="true">
-            <span class="category-symbol" aria-hidden="true">S</span>
-            <div><strong>Supermarkets</strong><span id="supermarket-radius" class="category-meta">—</span></div>
-            <span id="supermarket-count" class="category-count">0</span>
-          </button>
-          <button class="category-row" type="button" data-category="fuel" aria-pressed="true">
-            <span class="category-symbol fuel" aria-hidden="true">F</span>
-            <div><strong>Fuel stations</strong><span id="fuel-radius" class="category-meta">—</span></div>
-            <span id="fuel-count" class="category-count">0</span>
-          </button>
-        </div>
+        <div id="poi-categories" class="poi-categories" hidden></div>
 
         <div class="poi-legend" aria-label="POI legend" hidden id="poi-legend">
           <span><i class="legend-dot"></i> inside corridor</span>

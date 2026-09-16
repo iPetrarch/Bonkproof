@@ -2,11 +2,14 @@ import { DEFAULT_GAP_SETTINGS, buildFoundPoiWarnings, buildGapThresholds, buildR
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQuerySection } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
+import { buildActiveCategories, buildOverpassQuery, defaultCategoryRadii, defaultEnabledCategoryIds, getGraceMeters, matchingCategory } from './poi-config.js';
+import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resupply-profile.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
+  const RESUPPLY_PROFILE_URL = './config/resupply-profile.json';
   const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-  const INITIAL_CATEGORY_IDS = ['supermarket', 'fuel'];
+  const INITIAL_CATEGORY_IDS = ['supermarket', 'fuel', 'drinking_water'];
 
   const fileInput = document.getElementById('gpx-file');
   const dropZone = document.getElementById('drop-zone');
@@ -22,10 +25,6 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   const poiLegend = document.getElementById('poi-legend');
   const poiList = document.getElementById('poi-list');
   const poiTotal = document.getElementById('poi-total');
-  const supermarketCount = document.getElementById('supermarket-count');
-  const fuelCount = document.getElementById('fuel-count');
-  const supermarketRadius = document.getElementById('supermarket-radius');
-  const fuelRadius = document.getElementById('fuel-radius');
   const poiEmpty = document.getElementById('poi-empty');
   const poiPagination = document.getElementById('poi-pagination');
   const poiPageSummary = document.getElementById('poi-page-summary');
@@ -66,6 +65,10 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
 
   let errorTimer = null;
   let poiConfigPromise = null;
+  let resupplyProfilePromise = null;
+  let poiConfig = null;
+  let resupplyProfile = null;
+  let categoryRadiusOverrides = new Map();
   let poiAbortController = null;
   let currentPois = [];
   let currentCategories = [];
@@ -129,10 +132,9 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     poiPagination.hidden = true;
     poiTotal.hidden = true;
     poiTotal.textContent = '0';
-    supermarketCount.textContent = '0';
-    fuelCount.textContent = '0';
-    supermarketRadius.textContent = '—';
-    fuelRadius.textContent = '—';
+    poiCategories.querySelectorAll('[data-category-count]').forEach((node) => {
+      node.textContent = '0';
+    });
   }
 
   function setPoiSearchRunning(running) {
@@ -154,7 +156,9 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
 
   function resetPoiViewState() {
     poiPage = 1;
-    activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
+    activeCategoryIds = poiConfig ? defaultEnabledCategoryIds(poiConfig) : new Set(INITIAL_CATEGORY_IDS);
+    categoryRadiusOverrides = poiConfig ? defaultCategoryRadii(poiConfig) : new Map();
+    if (poiConfig) renderCategoryControls(poiConfig);
   }
 
   function clearRoute() {
@@ -171,7 +175,8 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     dropZone.hidden = false;
     fileInput.value = '';
     setPoiSearchRunning(false);
-    setPoiStatus('Load a GPX route. Bonkproof will then look for supermarkets and fuel stations near the route.');
+    poiCategories.hidden = !poiConfig;
+    setPoiStatus('Load a GPX route. Bonkproof will then look for the enabled POI categories near the route.');
   }
 
   function toRad(value) {
@@ -308,12 +313,19 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     });
   }
 
+  function categorySymbol(category) {
+    if (category.id === 'supermarket') return 'S';
+    if (category.id === 'fuel') return 'F';
+    if (category.id === 'drinking_water') return 'W';
+    return category.label.slice(0, 1).toUpperCase();
+  }
+
   function poiMarkerIcon(poi) {
-    const label = poi.category.id === 'fuel' ? 'F' : 'S';
+    const label = categorySymbol(poi.category);
     const selectedClass = selectedPoiIds.has(poiKey(poi)) ? 'selected' : '';
     return L.divIcon({
       className: '',
-      html: `<div class="poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.category.id} ${selectedClass}" aria-hidden="true">${label}</div>`,
+      html: `<div class="poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.category.id} ${selectedClass}" aria-hidden="true">${escapeHtml(label)}</div>`,
       iconSize: [30, 30],
       iconAnchor: [15, 15],
       popupAnchor: [0, -14],
@@ -363,6 +375,27 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     renderRoutebook();
   }
 
+  function renderCategoryControls(config) {
+    poiCategories.innerHTML = '';
+    config.categories.forEach((category) => {
+      const active = activeCategoryIds.has(category.id);
+      const radiusM = categoryRadiusOverrides.get(category.id) ?? category.defaultRadiusM;
+      const row = document.createElement('div');
+      row.className = `category-row ${active ? '' : 'is-inactive'}`;
+      row.dataset.category = category.id;
+      row.innerHTML = `
+        <button type="button" class="category-toggle" aria-pressed="${active}" data-category-toggle="${escapeHtml(category.id)}">
+          <span class="category-symbol ${category.id === 'fuel' ? 'fuel' : ''}" aria-hidden="true">${escapeHtml(categorySymbol(category))}</span>
+          <span class="category-copy"><strong>${escapeHtml(category.label)}</strong><small>${escapeHtml(category.group || 'other')}</small></span>
+          <span class="category-count" data-category-count="${escapeHtml(category.id)}">0</span>
+        </button>
+        <label class="category-radius"><span>Radius</span><span><input type="number" min="50" max="20000" step="50" value="${radiusM}" data-category-radius="${escapeHtml(category.id)}"> m</span></label>
+      `;
+      poiCategories.appendChild(row);
+    });
+    poiCategories.hidden = false;
+  }
+
   async function getPoiConfig() {
     if (!poiConfigPromise) {
       poiConfigPromise = fetch(CONFIG_URL, { cache: 'no-store' }).then(async (response) => {
@@ -370,20 +403,28 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
           throw new Error(`Could not load POI configuration (${response.status}).`);
         }
         return response.json();
+      }).then((config) => {
+        poiConfig = config;
+        activeCategoryIds = defaultEnabledCategoryIds(config);
+        categoryRadiusOverrides = defaultCategoryRadii(config);
+        renderCategoryControls(config);
+        return config;
       });
     }
     return poiConfigPromise;
   }
 
-  function getGraceMeters(category, config) {
-    const softEdge = config.corridor?.softEdge;
-    if (!softEdge?.enabled) {
-      return 0;
+  async function getResupplyProfile() {
+    if (!resupplyProfilePromise) {
+      resupplyProfilePromise = fetch(RESUPPLY_PROFILE_URL, { cache: 'no-store' }).then(async (response) => {
+        if (!response.ok) throw new Error(`Could not load resupply profile (${response.status}).`);
+        return response.json();
+      }).then((profile) => {
+        resupplyProfile = profile;
+        return profile;
+      });
     }
-    return Math.min(
-      Number(softEdge.maximumGraceM) || Infinity,
-      Math.max(Number(softEdge.minimumGraceM) || 0, category.defaultRadiusM * (Number(softEdge.percentage) || 0)),
-    );
+    return resupplyProfilePromise;
   }
 
   function getRouteBounds(parsed, paddingMeters) {
@@ -406,24 +447,8 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     return [south - latPad, west - lonPad, north + latPad, east + lonPad];
   }
 
-  function escapeOverpass(value) {
-    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  }
-
-  function categoryQueryStatements(category, bbox) {
-    const matches = category.osm?.anyOf || [];
-    return matches.flatMap((match) => Object.entries(match).map(([key, value]) => (
-      `nwr["${escapeOverpass(key)}"="${escapeOverpass(value)}"](${bbox.join(',')});`
-    )));
-  }
-
-  function buildOverpassQuery(categories, bbox) {
-    const statements = categories.flatMap((category) => categoryQueryStatements(category, bbox));
-    return `[out:json][timeout:30];(${statements.join('')});out center tags;`;
-  }
-
   async function fetchOsmCandidates(categories, section, config, signal) {
-    const maxEnvelope = Math.max(...categories.map((category) => category.defaultRadiusM + getGraceMeters(category, config)));
+    const maxEnvelope = Math.max(...categories.map((category) => category.radiusM + getGraceMeters(category, config)));
     const bbox = getRouteBounds({ segments: [section.points] }, maxEnvelope);
     const query = buildOverpassQuery(categories, bbox);
     const body = new URLSearchParams({ data: query });
@@ -452,21 +477,13 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
   }
 
-  function tagsMatch(tags, matcher) {
-    return Object.entries(matcher).every(([key, value]) => tags?.[key] === value);
-  }
-
-  function matchingCategory(element, categories) {
-    return categories.find((category) => (category.osm?.anyOf || []).some((matcher) => tagsMatch(element.tags, matcher))) || null;
-  }
-
   function normalizePoiPassBys(element, categories, geometry, config) {
     const coordinate = elementCoordinate(element);
     const category = matchingCategory(element, categories);
     if (!coordinate || !category) return [];
 
     const graceM = getGraceMeters(category, config);
-    const hardLimitM = category.defaultRadiusM;
+    const hardLimitM = category.radiusM;
     const softLimitM = hardLimitM + graceM;
     const physicalId = physicalPoiKey({ osmType: element.type, osmId: element.id });
 
@@ -525,6 +542,7 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
       .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
     const targetIndex = visiblePois.findIndex((candidate) => poiKey(candidate) === poiKey(target));
     if (targetIndex >= 0) poiPage = Math.floor(targetIndex / POI_LIST_PAGE_SIZE) + 1;
+    renderCategoryControls(poiConfig);
     renderPois(currentPois, currentCategories);
     const targetId = poiKey(target);
     const targetItem = [...poiList.querySelectorAll('.poi-list-item')]
@@ -643,13 +661,19 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     return '#d6902f';
   }
 
+  function activeFoundResupplyPois() {
+    const visible = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id));
+    return filterReliableResupplyPois(visible, resupplyProfile);
+  }
+
   function renderWarningLayer() {
     warningLayer.clearLayers();
     if (!currentParsedRoute) return;
     if (activeTab !== 'routebook' && (poiSearchRunning || (poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total)))) return;
+    const reliableSelected = filterReliableSelectedPoiIds(currentPois, selectedPoiIds, resupplyProfile, poiKey);
     const { warnings } = activeTab === 'routebook'
-      ? buildRoutebookWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters, gapSettings)
-      : buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters, gapSettings);
+      ? buildRoutebookWarnings(filterReliableResupplyPois(currentPois, resupplyProfile), reliableSelected, currentRouteDistanceMeters, gapSettings)
+      : buildFoundPoiWarnings(activeFoundResupplyPois(), currentRouteDistanceMeters, gapSettings);
     warnings.forEach((warning) => {
       const geometry = extractRouteGeometryRange(currentParsedRoute, warning.startMeters, warning.endMeters);
       geometry.forEach((line) => L.polyline(line, { color: gapSeverityColor(warning.severity), weight: 8, opacity: 0.78, interactive: false }).addTo(warningLayer));
@@ -681,12 +705,18 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
       renderWarningLayer();
       return;
     }
-    const { warnings, longestGapM, foundCount, gapThresholds } = buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters, gapSettings);
+
+    const reliableSelected = filterReliableSelectedPoiIds(currentPois, selectedPoiIds, resupplyProfile, poiKey);
+    const result = activeTab === 'routebook'
+      ? buildRoutebookWarnings(filterReliableResupplyPois(currentPois, resupplyProfile), reliableSelected, currentRouteDistanceMeters, gapSettings)
+      : buildFoundPoiWarnings(activeFoundResupplyPois(), currentRouteDistanceMeters, gapSettings);
+    const { warnings, longestGapM, gapThresholds } = result;
+    const foundCount = result.foundCount ?? reliableSelected.size;
     const counts = { info: 0, warning: 0, critical: 0 };
     warnings.forEach((warning) => { counts[warning.severity] += 1; });
     poiWarningSummary.hidden = false;
     poiWarningSummary.className = 'warning-summary';
-    poiWarningSummary.textContent = `${warnings.length} Versorgungslücke${warnings.length === 1 ? '' : 'n'} ab Info-Schwelle; ${counts.info} Info, ${counts.warning} Warning, ${counts.critical} Critical. Längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} POIs im Korridor. Schwellen: ${formatThresholdKm(gapThresholds.infoM)} / ${formatThresholdKm(gapThresholds.warningM)} / ${formatThresholdKm(gapThresholds.criticalM)}. Near misses zählen nicht.`;
+    poiWarningSummary.textContent = `${warnings.length} Versorgungslücke${warnings.length === 1 ? '' : 'n'} ab Info-Schwelle; ${counts.info} Info, ${counts.warning} Warning, ${counts.critical} Critical. Längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} verlässliche Versorgungspunkte. Schwellen: ${formatThresholdKm(gapThresholds.infoM)} / ${formatThresholdKm(gapThresholds.warningM)} / ${formatThresholdKm(gapThresholds.criticalM)}. Near misses zählen nicht.`;
     poiWarningList.innerHTML = '';
     poiWarningList.hidden = warnings.length === 0;
     warnings.forEach((warning) => {
@@ -753,19 +783,22 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     poiPage = page.page;
     renderMapPois();
 
-    const counts = Object.fromEntries(categories.map((category) => [category.id, 0]));
+    const allCategories = poiConfig?.categories || categories;
+    const counts = Object.fromEntries(allCategories.map((category) => [category.id, 0]));
     pois.forEach((poi) => { counts[poi.category.id] = (counts[poi.category.id] || 0) + 1; });
+    poiCategories.querySelectorAll('[data-category-count]').forEach((node) => {
+      node.textContent = String(counts[node.dataset.categoryCount] || 0);
+    });
 
-    supermarketCount.textContent = counts.supermarket || 0;
-    fuelCount.textContent = counts.fuel || 0;
-    poiTotal.textContent = String(pois.length);
+    poiTotal.textContent = String(visiblePois.length);
     poiTotal.hidden = false;
     poiCategories.hidden = false;
     poiLegend.hidden = false;
 
-    document.querySelectorAll('.category-row').forEach((button) => {
-      button.setAttribute('aria-pressed', String(activeCategoryIds.has(button.dataset.category)));
-      button.classList.toggle('is-inactive', !activeCategoryIds.has(button.dataset.category));
+    poiCategories.querySelectorAll('.category-row').forEach((row) => {
+      const active = activeCategoryIds.has(row.dataset.category);
+      row.classList.toggle('is-inactive', !active);
+      row.querySelector('.category-toggle')?.setAttribute('aria-pressed', String(active));
     });
 
     poiList.innerHTML = '';
@@ -810,7 +843,7 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     const nearMissCount = visiblePois.filter((poi) => poi.status === 'near-miss').length;
     setPoiStatus(
       visiblePois.length === 0
-        ? 'No supermarkets or fuel stations were found inside the current route corridors.'
+        ? (activeCategoryIds.size === 0 ? 'Keine POI-Kategorie ausgewählt.' : 'No POIs were found in the enabled categories inside the current route corridors.')
         : `${visiblePois.length} useful stop${visiblePois.length === 1 ? '' : 's'} found in route order${nearMissCount ? `, including ${nearMissCount} near miss${nearMissCount === 1 ? '' : 'es'}` : ''}.`,
     );
   }
@@ -830,21 +863,18 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     setPoiStatus('Reading POI configuration…');
 
     try {
-      const config = await getPoiConfig();
+      const [config] = await Promise.all([getPoiConfig(), getResupplyProfile()]);
       if (signal.aborted) return;
 
-      const categories = config.categories.filter((category) => INITIAL_CATEGORY_IDS.includes(category.id));
-      if (categories.length !== INITIAL_CATEGORY_IDS.length) {
-        throw new Error('The POI configuration is missing supermarket or fuel categories.');
+      const categories = buildActiveCategories(config, activeCategoryIds, categoryRadiusOverrides);
+      poiCategories.hidden = false;
+      if (categories.length === 0) {
+        failedPoiSections = [];
+        poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: true };
+        renderPois([], config.categories);
+        return;
       }
 
-      categories.forEach((category) => {
-        const grace = getGraceMeters(category, config);
-        const text = `${category.defaultRadiusM} m + ${grace} m soft edge`;
-        if (category.id === 'supermarket') supermarketRadius.textContent = text;
-        if (category.id === 'fuel') fuelRadius.textContent = text;
-      });
-      poiCategories.hidden = false;
       const geometry = buildRouteGeometry(parsed);
       const deduped = new Map((retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]));
       const sections = [...sectionsToQuery];
@@ -895,7 +925,7 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
       const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
       selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
       failedPoiSections = sections.filter((section) => failedSections.includes(section.index));
-      renderPois(pois, categories);
+      renderPois(pois, config.categories);
       setPoiStatus(
         failedSections.length > 0
           ? `POI-Suche teilweise erfolgreich: Abschnitte ${failedSections.join(', ')} fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Abschnitten verfügbar.`
@@ -933,14 +963,35 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   replaceRoute.addEventListener('click', () => fileInput.click());
   reloadPois.addEventListener('click', () => currentParsedRoute && loadPois(currentParsedRoute, true, failedPoiSections.length > 0));
   gapSettingInputs.forEach((input) => input.addEventListener('input', applyGapSettingsFromInputs));
-  document.querySelectorAll('.category-row').forEach((button) => {
-    button.addEventListener('click', () => {
-      const categoryId = button.dataset.category;
-      if (activeCategoryIds.has(categoryId)) activeCategoryIds.delete(categoryId);
-      else activeCategoryIds.add(categoryId);
-      poiPage = 1;
+  poiCategories.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-category-toggle]');
+    if (!button) return;
+    const categoryId = button.dataset.categoryToggle;
+    const enabling = !activeCategoryIds.has(categoryId);
+    if (enabling) activeCategoryIds.add(categoryId);
+    else activeCategoryIds.delete(categoryId);
+    poiPage = 1;
+    if (poiConfig) renderCategoryControls(poiConfig);
+    if (enabling && currentParsedRoute) {
+      loadPois(currentParsedRoute, true, false);
+    } else {
       renderPois(currentPois, currentCategories);
-    });
+      renderWarnings();
+      renderWarningLayer();
+    }
+  });
+  poiCategories.addEventListener('change', (event) => {
+    const input = event.target.closest('[data-category-radius]');
+    if (!input) return;
+    const categoryId = input.dataset.categoryRadius;
+    const fallback = categoryRadiusOverrides.get(categoryId) || poiConfig?.categories.find((category) => category.id === categoryId)?.defaultRadiusM || 250;
+    const radiusM = Number(input.value);
+    if (!Number.isFinite(radiusM) || radiusM <= 0) {
+      input.value = String(fallback);
+      return;
+    }
+    categoryRadiusOverrides.set(categoryId, radiusM);
+    if (activeCategoryIds.has(categoryId) && currentParsedRoute) loadPois(currentParsedRoute, true, false);
   });
   poiPrevious.addEventListener('click', () => {
     poiPage -= 1;
@@ -978,4 +1029,8 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   });
 
   renderGapSettingsPreview();
+  Promise.all([getPoiConfig(), getResupplyProfile()]).catch((error) => {
+    console.error(error);
+    showError(error instanceof Error ? error.message : 'Could not load Bonkproof configuration.');
+  });
 })();

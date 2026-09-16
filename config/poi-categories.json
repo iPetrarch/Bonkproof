@@ -77,7 +77,7 @@
       "id": "toilets",
       "group": "essentials",
       "label": "Toilets",
-      "defaultEnabled": true,
+      "defaultEnabled": false,
       "defaultRadiusM": 500,
       "osm": { "anyOf": [{ "amenity": "toilets" }] }
     },
@@ -101,7 +101,7 @@
       "id": "bicycle_shop",
       "group": "bike",
       "label": "Bicycle shop / repair",
-      "defaultEnabled": true,
+      "defaultEnabled": false,
       "defaultRadiusM": 2000,
       "osm": { "anyOf": [{ "shop": "bicycle" }] }
     },
@@ -109,7 +109,7 @@
       "id": "bicycle_repair_station",
       "group": "bike",
       "label": "Bicycle repair station / public pump",
-      "defaultEnabled": true,
+      "defaultEnabled": false,
       "defaultRadiusM": 1000,
       "osm": { "anyOf": [{ "amenity": "bicycle_repair_station" }] }
     },
@@ -117,7 +117,7 @@
       "id": "railway",
       "group": "transport",
       "label": "Railway station / halt",
-      "defaultEnabled": true,
+      "defaultEnabled": false,
       "defaultRadiusM": 2500,
       "osm": { "anyOf": [{ "railway": "station" }, { "railway": "halt" }] }
     },
