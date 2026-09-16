@@ -15,7 +15,7 @@ export function togglePoiSelection(selectedPoiIds, poiId) {
   return next;
 }
 
-export function buildRoutebook(pois, selectedPoiIds, routeDistanceMeters) {
+export function buildRoutebook(pois, selectedPoiIds, routeDistanceMeters, warningThresholdM = ROUTEBOOK_GAP_WARNING_M) {
   const stops = pois
     .filter((poi) => selectedPoiIds.has(poiKey(poi)))
     .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
@@ -32,7 +32,7 @@ export function buildRoutebook(pois, selectedPoiIds, routeDistanceMeters) {
         poi,
         routeMeters,
         distanceFromPreviousM,
-        isLongGap: distanceFromPreviousM > ROUTEBOOK_GAP_WARNING_M,
+        isLongGap: distanceFromPreviousM > warningThresholdM,
       };
     }),
   ];
@@ -43,21 +43,22 @@ export function buildRoutebook(pois, selectedPoiIds, routeDistanceMeters) {
     name: 'Finish',
     routeMeters: routeDistanceMeters,
     distanceFromPreviousM: distanceToFinishM,
-    isLongGap: distanceToFinishM > ROUTEBOOK_GAP_WARNING_M,
+    isLongGap: distanceToFinishM > warningThresholdM,
   });
 
   return {
     entries,
     stops,
     longestGapM: Math.max(...entries.slice(1).map((entry) => entry.distanceFromPreviousM)),
+    warningThresholdM,
   };
 }
 
-function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters) {
-  const routebook = buildRoutebook(pois, selectedPoiIds, routeDistanceMeters);
+function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, warningThresholdM = ROUTEBOOK_GAP_WARNING_M) {
+  const routebook = buildRoutebook(pois, selectedPoiIds, routeDistanceMeters, warningThresholdM);
   const warnings = routebook.entries.slice(1)
     .map((entry, index) => ({ entry, previous: routebook.entries[index] }))
-    .filter(({ entry }) => entry.distanceFromPreviousM > ROUTEBOOK_GAP_WARNING_M)
+    .filter(({ entry }) => entry.distanceFromPreviousM > warningThresholdM)
     .map(({ entry, previous }) => {
       return {
         from: previous.kind === 'stop' ? previous.poi.name : 'Start',
@@ -67,21 +68,26 @@ function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters) {
         lengthM: entry.distanceFromPreviousM,
       };
     });
-  return { warnings, longestGapM: routebook.longestGapM, routebook };
+  return { warnings, longestGapM: routebook.longestGapM, routebook, warningThresholdM };
 }
 
-export function buildRoutebookWarnings(pois, selectedPoiIds, routeDistanceMeters) {
-  return buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters);
+export function buildRoutebookWarnings(pois, selectedPoiIds, routeDistanceMeters, warningThresholdM = ROUTEBOOK_GAP_WARNING_M) {
+  return buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, warningThresholdM);
 }
 
-export function buildFoundPoiWarnings(pois, routeDistanceMeters) {
+export function buildFoundPoiWarnings(pois, routeDistanceMeters, warningThresholdM = ROUTEBOOK_GAP_WARNING_M) {
   const found = pois.filter((poi) => poi.status !== 'near-miss').sort((a, b) => a.routeKm - b.routeKm);
   const points = [{ name: 'Start', routeMeters: 0 }, ...found.map((poi) => ({ name: poi.name, routeMeters: poi.routeKm * 1000 })), { name: 'Ziel', routeMeters: routeDistanceMeters }];
   const warnings = points.slice(1).map((to, index) => {
     const from = points[index];
     return { from: from.name, to: to.name, startMeters: from.routeMeters, endMeters: to.routeMeters, lengthM: Math.max(0, to.routeMeters - from.routeMeters) };
-  }).filter((warning) => warning.lengthM > ROUTEBOOK_GAP_WARNING_M);
-  return { warnings, longestGapM: Math.max(0, ...points.slice(1).map((to, index) => to.routeMeters - points[index].routeMeters)), foundCount: found.length };
+  }).filter((warning) => warning.lengthM > warningThresholdM);
+  return {
+    warnings,
+    longestGapM: Math.max(0, ...points.slice(1).map((to, index) => to.routeMeters - points[index].routeMeters)),
+    foundCount: found.length,
+    warningThresholdM,
+  };
 }
 
 function interpolate(a, b, fraction) {
