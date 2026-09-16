@@ -95,10 +95,24 @@ test('POI warning rendering suppresses incomplete physical gaps but keeps routeb
   assert.match(renderer, /poiSectionStatus\.failed\.size > 0/);
   assert.match(renderer, /Versorgungslücken werden geprüft/);
   assert.match(renderer, /Prüfung unvollständig/);
-  assert.match(app, /buildFoundPoiWarnings\(currentPois, currentRouteDistanceMeters\)/);
+  assert.match(app, /buildFoundPoiWarnings\(currentPois, currentRouteDistanceMeters, gapSettings\)/);
   assert.match(app, /ohne gefundenen POI/);
   assert.doesNotMatch(app, /formatDistance\(warning\.lengthM\) without a selected stop/);
   assert.match(app, /activeTab === 'routebook'\s*\? buildRoutebookWarnings/);
+});
+
+test('gap severity controls update analysis dynamically and validate percentage order', () => {
+  assert.match(index, /id="gap-critical-km"[^>]*value="30"/);
+  assert.match(index, /id="gap-info-percent"[^>]*value="66"/);
+  assert.match(index, /id="gap-warning-percent"[^>]*value="80"/);
+  assert.match(index, /id="gap-critical-percent"[^>]*value="95"/);
+  assert.match(app, /gapSettingInputs\.forEach\(\(input\) => input\.addEventListener\('input', applyGapSettingsFromInputs\)\)/);
+  assert.match(app, /normalizeGapSettings\(\{[\s\S]*?criticalDistanceKm:[\s\S]*?infoPercent:[\s\S]*?warningPercent:[\s\S]*?criticalPercent:/);
+  assert.match(app, /buildRoutebook\(currentPois, selectedPoiIds, currentRouteDistanceMeters, gapSettings\)/);
+  assert.match(app, /severity-\$\{warning\.severity\}/);
+  assert.match(styles, /\.warning-item\.severity-info/);
+  assert.match(styles, /\.warning-item\.severity-warning/);
+  assert.match(styles, /\.warning-item\.severity-critical/);
 });
 
 test('POI section status keeps partial retries incomplete and preserves successful results', () => {
