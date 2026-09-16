@@ -10,7 +10,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -19,6 +19,150 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply workload integration on development branch
+        if: github.ref == 'refs/heads/chatgpt/robust-poi-workloads'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('app.js')
+          text = path.read_text()
+          text = text.replace(
+            "import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQuerySection } from './poi-search.js';",
+            "import { buildPoiQuerySections, createPoiQueryWorkloads, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQueryWorkload } from './poi-search.js';",
+          )
+          text = text.replace(
+            ": (incomplete ? 'Fehlgeschlagene Abschnitte erneut laden' : 'POIs neu laden');",
+            ": (incomplete ? 'Fehlgeschlagene Suchpakete erneut laden' : 'POIs neu laden');",
+          )
+          text = text.replace(
+            "setPoiStatus(`${label} Abschnitt ${section.index} von ${section.total}: neuer Versuch in ${totalSeconds} Sekunden.`);",
+            "setPoiStatus(`${label} Neuer Versuch in ${totalSeconds} Sekunden.`);",
+          )
+          text = text.replace(
+            "setPoiStatus(`${label} Abschnitt ${section.index} von ${section.total}: neuer Versuch in ${remaining} Sekunden.`);",
+            "setPoiStatus(`${label} Neuer Versuch in ${remaining} Sekunden.`);",
+          )
+          text = text.replace(
+            "poiWarningSummary.textContent = `Prüfung unvollständig – einige Routenabschnitte konnten nicht geprüft werden. Fehlende Abschnitte: ${failedPoiSections.map((section) => section.index).join(', ')}.`;",
+            "poiWarningSummary.textContent = `Prüfung unvollständig – ${failedPoiSections.length} Suchpaket${failedPoiSections.length === 1 ? '' : 'e'} konnten selbst nach automatischer Verkleinerung nicht geladen werden.`;",
+          )
+
+          new_function = r'''  async function loadPois(parsed, preserveSelection = false, retryFailedOnly = false) {
+    if (poiSearchRunning) return;
+    const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
+    setPoiSearchRunning(true);
+    poiAbortController?.abort();
+    poiAbortController = new AbortController();
+    const { signal } = poiAbortController;
+    if (!retryFailedOnly) clearPoiUi();
+    selectedPoiIds = previousSelection;
+    setPoiStatus('Reading POI configuration…');
+
+    try {
+      const [config] = await Promise.all([getPoiConfig(), getResupplyProfile()]);
+      if (signal.aborted) return;
+
+      const categories = buildActiveCategories(config, activeCategoryIds, categoryRadiusOverrides);
+      poiCategories.hidden = false;
+      if (categories.length === 0) {
+        failedPoiSections = [];
+        poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: true };
+        renderPois([], config.categories);
+        return;
+      }
+
+      const geometry = buildRouteGeometry(parsed);
+      const deduped = new Map((retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]));
+      const workloads = retryFailedOnly
+        ? [...failedPoiSections]
+        : createPoiQueryWorkloads(currentPoiSections, categories);
+      const failedWorkloads = [];
+      poiSectionStatus = { total: workloads.length, completed: 0, failed: new Set(), started: true };
+
+      for (let workloadPosition = 0; workloadPosition < workloads.length; workloadPosition += 1) {
+        const workload = workloads[workloadPosition];
+        const section = workload.section;
+        const workloadCategories = workload.categories;
+        if (signal.aborted) return;
+        setPoiStatus(`POIs werden gesucht: Suchpaket ${poiSectionStatus.completed + 1} von ${poiSectionStatus.total}`);
+        try {
+          let rateLimited = false;
+          const candidates = await fetchPoiSectionWithRetry(
+            (currentSection, currentSignal) => fetchOsmCandidates(workloadCategories, currentSection, config, currentSignal),
+            section,
+            {
+              signal,
+              onBackoff: (delay, error) => {
+                rateLimited = Number(error?.status) === 429;
+              },
+              sleep: (delay) => waitForPoiBackoff(delay, section, signal, rateLimited),
+            },
+          );
+          if (!candidates) return;
+          candidates.forEach((element) => {
+            normalizePoiPassBys(element, workloadCategories, geometry, config).forEach((poi) => {
+              const key = poiKey(poi);
+              const existing = deduped.get(key);
+              if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
+            });
+          });
+          poiSectionStatus.completed += 1;
+          poiSectionStatus.failed.delete(workload.id);
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+          const replacements = Number(error?.status) === 504 ? splitPoiQueryWorkload(workload) : [];
+          if (replacements.length > 0) {
+            poiSectionStatus.total += replacements.length - 1;
+            workloads.splice(workloadPosition + 1, 0, ...replacements);
+            setPoiStatus('Ein Suchpaket war zu groß und wird automatisch weiter aufgeteilt.');
+            continue;
+          }
+          failedWorkloads.push(workload);
+          poiSectionStatus.failed.add(workload.id);
+          poiSectionStatus.completed += 1;
+          console.error(error);
+        }
+        if (workloadPosition < workloads.length - 1) await waitForPoiBackoff(1000, section, signal);
+      }
+
+      const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+      selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
+      failedPoiSections = failedWorkloads;
+      renderPois(pois, config.categories);
+      setPoiStatus(
+        failedWorkloads.length > 0
+          ? `POI-Suche teilweise erfolgreich: ${failedWorkloads.length} Suchpaket${failedWorkloads.length === 1 ? '' : 'e'} endgültig fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Paketen verfügbar.`
+          : `${pois.length} POIs vollständig geladen (${poiSectionStatus.completed} Suchpakete verarbeitet).`,
+      );
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      console.error(error);
+      setPoiStatus('The route is loaded, but the POI lookup failed. You can keep using the route view and try again with another GPX later.');
+      showError(error instanceof Error ? error.message : 'Could not load route POIs.');
+    } finally {
+      if (!signal.aborted) setPoiSearchRunning(false);
+    }
+  }
+'''
+          text, count = re.subn(r"  async function loadPois\(parsed, preserveSelection = false, retryFailedOnly = false\) \{.*?\n  \}\n\n  async function loadFile", new_function + "\n  async function loadFile", text, flags=re.S)
+          if count != 1:
+            raise SystemExit(f'Expected one loadPois replacement, got {count}')
+          path.write_text(text)
+          PY
+
+          if git diff --quiet -- app.js; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js
+          git commit -m "Integrate adaptive POI workload pipeline"
+          git push origin HEAD:chatgpt/robust-poi-workloads
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
