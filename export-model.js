@@ -10,11 +10,14 @@ export function buildRoutePointSnapshot(poi, options = {}) {
     poiKey = (value) => `${value.osmType}/${value.osmId}${value.passId ? `#${value.passId}` : ''}`,
   } = options;
   const id = poiKey(poi);
+  const description = typeof poi.description === 'string'
+    ? poi.description.trim()
+    : normalizePoiDescription(poi.tags);
 
   return {
     id,
     name: poi.name || '',
-    description: typeof poi.description === 'string' ? poi.description : '',
+    description,
     lat: Number(poi.lat),
     lon: Number(poi.lon),
     routeKm: Number(poi.routeKm),
