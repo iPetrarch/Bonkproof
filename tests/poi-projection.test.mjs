@@ -10,8 +10,8 @@ test('one physical POI can produce two route pass-bys', () => {
   const parsed = route(
     { lat: 53.0000, lon: 7.0000 },
     { lat: 53.0000, lon: 7.0100 },
-    { lat: 53.0100, lon: 7.0100 },
-    { lat: 53.0100, lon: 7.0000 },
+    { lat: 53.0200, lon: 7.0100 },
+    { lat: 53.0000, lon: 7.0100 },
     { lat: 53.0000, lon: 7.0000 },
   );
   const geometry = buildRouteGeometry(parsed);
@@ -44,8 +44,8 @@ test('a spatially close return later in the ride remains a separate pass-by', ()
   const parsed = route(
     { lat: 53.0000, lon: 7.0000 },
     { lat: 53.0000, lon: 7.0100 },
-    { lat: 53.0200, lon: 7.0100 },
-    { lat: 53.0200, lon: 7.0000 },
+    { lat: 53.0300, lon: 7.0100 },
+    { lat: 53.0000, lon: 7.0100 },
     { lat: 53.0000, lon: 7.0000 },
   );
   const geometry = buildRouteGeometry(parsed);
