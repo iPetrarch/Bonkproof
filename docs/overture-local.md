@@ -20,7 +20,7 @@ The importer expects an explicit Overture release name, for example:
 python3 scripts/update-overture-places.py --release 2026-08-19.0
 ```
 
-The importer uses the Overture AWS GeoParquet distribution and DuckDB's `httpfs` and `spatial` extensions. Overture release names must not be guessed permanently in automation; the monthly maintenance job should be updated to discover or explicitly configure the current release.
+The importer uses the Overture AWS GeoParquet distribution and DuckDB's `httpfs` and `spatial` extensions. Overture release names must not be guessed permanently in automation; the maintenance workflow discovers the latest available release unless a release is explicitly supplied.
 
 The default import bounding box covers Germany approximately:
 
@@ -58,22 +58,24 @@ The database file is generated data and must not be committed.
 
 ## Production database path
 
-`api/places.php` checks `BONKPROOF_OVERTURE_DB` first. If that environment variable is not set, it expects the database outside the public document root at:
+`api/places.php` checks `BONKPROOF_OVERTURE_DB` first. If that environment variable is not set, it expects:
 
 ```text
-<account-root>/bonkproof-data/overture-places.sqlite
+<bonkproof-web-root>/data/overture-places.sqlite
 ```
 
-For the current one.com layout this is intentionally outside `httpd.www`, so the SQLite file itself is not directly downloadable over HTTP.
+The current one.com SFTP account cannot create the originally planned sibling directory outside `httpd.www`. The production database therefore lives inside the Bonkproof tree, but the entire `data` directory is protected from direct HTTP access by `data/.htaccess`. PHP accesses the SQLite file directly through the filesystem; browser requests must use `api/places.php`.
+
+The refresh workflow verifies that it can enter the target data directory before uploading. It also removes the accidental legacy root-level `httpd.www/overture-places.sqlite` file after a successful protected upload.
 
 ## Monthly update strategy
 
 The intended production flow is:
 
-1. Build a new database into a temporary file on the VPS.
-2. Run a basic integrity/query check against the new file.
-3. Transfer it to the production host under a temporary name.
-4. Atomically replace `overture-places.sqlite` only after a successful transfer.
+1. Build a new database into a temporary file on the GitHub runner.
+2. Run integrity and plausibility checks against the new file.
+3. Transfer it to the protected production data directory under a temporary name.
+4. Atomically rename the temporary database into place after a successful transfer.
 5. Keep the previous database long enough for rollback.
 
 Do not replace the production database in-place while requests may be reading it.
