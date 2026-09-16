@@ -52,7 +52,7 @@ test('a POI can be selected and removed through the shared selection state', () 
 });
 
 test('list and marker popup both use the same selection action', () => {
-  assert.match(app, /\.poi-selection.*?toggleSelection\(poiKey\(poi\)\)/s);
+  assert.match(app, /page\.items\.forEach\(\(poi\) => \{[\s\S]*?const poiId = poiKey\(poi\)[\s\S]*?\.poi-selection[\s\S]*?toggleSelection\(poiId\)/);
   assert.match(app, /popup-selection[\s\S]*?toggleSelection\(poiId\)/);
 });
 
