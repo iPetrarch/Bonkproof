@@ -23,7 +23,10 @@ $publishFiles = @(
     'poi-search.js',
     'poi-projection.js',
     'poi-clustering.js',
-    'config/poi-categories.json'
+    'poi-config.js',
+    'resupply-profile.js',
+    'config/poi-categories.json',
+    'config/resupply-profile.json'
 )
 
 function Assert-LocalJavaScriptImportsPublished([string[]]$Files) {
