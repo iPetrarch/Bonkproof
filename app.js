@@ -1,6 +1,7 @@
 import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, poiKey, ROUTEBOOK_GAP_WARNING_M, togglePoiSelection } from './routebook.js';
-import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, splitPoiQuerySection } from './poi-search.js';
+import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQuerySection } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
+import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -418,75 +419,23 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     return categories.find((category) => (category.osm?.anyOf || []).some((matcher) => tagsMatch(element.tags, matcher))) || null;
   }
 
-  function buildRouteGeometry(parsed) {
-    let routeOffset = 0;
-    const lineSegments = [];
-
-    parsed.segments.forEach((segment) => {
-      let segmentOffset = 0;
-      for (let i = 1; i < segment.length; i += 1) {
-        const a = segment[i - 1];
-        const b = segment[i];
-        const length = haversineMeters(a, b);
-        lineSegments.push({ a, b, length, routeStartM: routeOffset + segmentOffset });
-        segmentOffset += length;
-      }
-      routeOffset += segmentOffset;
-    });
-
-    return lineSegments;
-  }
-
-  function nearestRouteProjection(point, geometry) {
-    let best = null;
-
-    geometry.forEach((segment) => {
-      const referenceLat = (segment.a.lat + segment.b.lat + point.lat) / 3;
-      const metersPerLon = 111320 * Math.max(0.2, Math.cos(toRad(referenceLat)));
-      const metersPerLat = 111320;
-      const bx = (segment.b.lon - segment.a.lon) * metersPerLon;
-      const by = (segment.b.lat - segment.a.lat) * metersPerLat;
-      const px = (point.lon - segment.a.lon) * metersPerLon;
-      const py = (point.lat - segment.a.lat) * metersPerLat;
-      const denom = bx * bx + by * by;
-      const t = denom > 0 ? Math.max(0, Math.min(1, (px * bx + py * by) / denom)) : 0;
-      const dx = px - bx * t;
-      const dy = py - by * t;
-      const distanceM = Math.hypot(dx, dy);
-
-      if (!best || distanceM < best.distanceM) {
-        best = {
-          distanceM,
-          routeKm: (segment.routeStartM + segment.length * t) / 1000,
-        };
-      }
-    });
-
-    return best;
-  }
-
-  function normalizePoi(element, categories, geometry, config) {
+  function normalizePoiPassBys(element, categories, geometry, config) {
     const coordinate = elementCoordinate(element);
     const category = matchingCategory(element, categories);
-    if (!coordinate || !category) {
-      return null;
-    }
-
-    const projection = nearestRouteProjection(coordinate, geometry);
-    if (!projection) {
-      return null;
-    }
+    if (!coordinate || !category) return [];
 
     const graceM = getGraceMeters(category, config);
     const hardLimitM = category.defaultRadiusM;
     const softLimitM = hardLimitM + graceM;
-    if (projection.distanceM > softLimitM) {
-      return null;
-    }
+    const physicalId = physicalPoiKey({ osmType: element.type, osmId: element.id });
 
-    return {
+    return projectPoiPassBys(coordinate, geometry, softLimitM).map((projection) => ({
       osmType: element.type,
       osmId: element.id,
+      physicalPoiId: physicalId,
+      passId: projection.passId,
+      passIndex: projection.passIndex,
+      passCount: projection.passCount,
       lat: coordinate.lat,
       lon: coordinate.lon,
       tags: element.tags || {},
@@ -495,7 +444,7 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
       offRouteM: projection.distanceM,
       status: projection.distanceM <= hardLimitM ? 'match' : 'near-miss',
       name: element.tags?.name || element.tags?.brand || category.label,
-    };
+    }));
   }
 
   function escapeHtml(value) {
@@ -507,9 +456,40 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
       .replace(/'/g, '&#039;');
   }
 
+  function physicalPassesFor(poi) {
+    const physicalId = poi.physicalPoiId || physicalPoiKey(poi);
+    return currentPois
+      .filter((candidate) => (candidate.physicalPoiId || physicalPoiKey(candidate)) === physicalId)
+      .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+  }
+
+  function nextPassBy(poi) {
+    const passes = physicalPassesFor(poi);
+    if (passes.length < 2) return null;
+    const currentIndex = passes.findIndex((candidate) => poiKey(candidate) === poiKey(poi));
+    return passes[(currentIndex + 1) % passes.length] || null;
+  }
+
   function focusPoi(poi) {
     map.setView([poi.lat, poi.lon], Math.max(map.getZoom(), 15));
     poiMarkers.get(poiKey(poi))?.openPopup();
+  }
+
+  function jumpToPassBy(poi) {
+    const target = nextPassBy(poi);
+    if (!target) return;
+    activeCategoryIds.add(target.category.id);
+    const visiblePois = currentPois
+      .filter((candidate) => activeCategoryIds.has(candidate.category.id))
+      .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+    const targetIndex = visiblePois.findIndex((candidate) => poiKey(candidate) === poiKey(target));
+    if (targetIndex >= 0) poiPage = Math.floor(targetIndex / POI_LIST_PAGE_SIZE) + 1;
+    renderPois(currentPois, currentCategories);
+    const targetId = poiKey(target);
+    const targetItem = [...poiList.querySelectorAll('.poi-list-item')]
+      .find((item) => item.dataset.poiId === targetId);
+    targetItem?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    focusPoi(target);
   }
 
   function toggleSelection(poiId) {
@@ -533,9 +513,10 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
       const item = document.createElement('li');
       item.className = `routebook-item ${entry.kind} ${entry.isLongGap ? 'long-gap' : ''}`;
       if (entry.kind === 'stop') {
+        const passText = entry.poi.passCount > 1 ? ` · Vorbeifahrt ${entry.poi.passIndex}/${entry.poi.passCount}` : '';
         item.innerHTML = `
           <button type="button" class="routebook-focus">
-            <span class="routebook-main"><strong>${escapeHtml(entry.poi.name)}</strong><small>${escapeHtml(entry.poi.category.label)} · ${formatRouteKm(entry.routeMeters)}</small></span>
+            <span class="routebook-main"><strong>${escapeHtml(entry.poi.name)}</strong><small>${escapeHtml(entry.poi.category.label)} · ${formatRouteKm(entry.routeMeters)}${passText}</small></span>
             <span class="routebook-gap">${formatDistance(entry.distanceFromPreviousM)} from previous</span>
           </button>
           <button type="button" class="routebook-remove" aria-label="Remove ${escapeHtml(entry.poi.name)} from routebook">Remove</button>
@@ -589,16 +570,24 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
     const poiId = poiKey(poi);
     const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
     const selected = selectedPoiIds.has(poiId);
+    const nextPass = nextPassBy(poi);
+    const passText = poi.passCount > 1 ? `<br>Vorbeifahrt ${poi.passIndex} von ${poi.passCount}` : '';
+    const jumpButton = nextPass
+      ? `<button type="button" class="popup-selection popup-pass-jump" data-pass-jump="${escapeHtml(poiId)}">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>`
+      : '';
     const popup = `
       <strong>${escapeHtml(poi.name)}</strong><br>
-      ${escapeHtml(poi.category.label)} · km ${poi.routeKm.toFixed(1)}<br>
+      ${escapeHtml(poi.category.label)} · km ${poi.routeKm.toFixed(1)}${passText}<br>
       ${Math.round(poi.offRouteM)} m off route · ${statusText}<br>
       <button type="button" class="popup-selection" data-poi-id="${escapeHtml(poiId)}">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>
+      ${jumpButton}
     `;
     const marker = L.marker(latLng, { icon: poiMarkerIcon(poi), title: poi.name, keyboard: true }).bindPopup(popup).addTo(poiLayer);
     marker.on('popupopen', () => {
       const selectionButton = map.getContainer().querySelector(`[data-poi-id="${poiId}"]`);
       selectionButton?.addEventListener('click', () => toggleSelection(poiId), { once: true });
+      const passButton = map.getContainer().querySelector(`[data-pass-jump="${poiId}"]`);
+      passButton?.addEventListener('click', () => jumpToPassBy(poi), { once: true });
     });
     poiMarkers.set(poiId, marker);
   }
@@ -728,17 +717,25 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
 
     poiList.innerHTML = '';
     page.items.forEach((poi) => {
+      const poiId = poiKey(poi);
+      const nextPass = nextPassBy(poi);
+      const passText = poi.passCount > 1 ? ` · Vorbeifahrt ${poi.passIndex}/${poi.passCount}` : '';
       const item = document.createElement('li');
-      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiKey(poi)) ? 'selected' : ''}`;
+      item.dataset.poiId = poiId;
+      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;
       item.innerHTML = `
-        <button type="button" class="poi-list-button">
-          <span class="poi-list-main"><strong>${escapeHtml(poi.name)}</strong><small>${escapeHtml(poi.category.label)} · ${Math.round(poi.offRouteM)} m off route</small></span>
-          <span class="route-km">km ${poi.routeKm.toFixed(1)}</span>
-        </button>
-        <button type="button" class="poi-selection">${selectedPoiIds.has(poiKey(poi)) ? 'Remove' : 'Add'}</button>
+        <div class="poi-list-primary">
+          <button type="button" class="poi-list-button">
+            <span class="poi-list-main"><strong>${escapeHtml(poi.name)}</strong><small>${escapeHtml(poi.category.label)} · ${Math.round(poi.offRouteM)} m off route${passText}</small></span>
+            <span class="route-km">km ${poi.routeKm.toFixed(1)}</span>
+          </button>
+          ${nextPass ? `<button type="button" class="poi-pass-jump">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>` : ''}
+        </div>
+        <button type="button" class="poi-selection">${selectedPoiIds.has(poiId) ? 'Remove' : 'Add'}</button>
       `;
       item.querySelector('.poi-list-button').addEventListener('click', () => focusPoi(poi));
-      item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiKey(poi)));
+      item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiId));
+      item.querySelector('.poi-pass-jump')?.addEventListener('click', () => jumpToPassBy(poi));
       poiList.appendChild(item);
     });
     poiList.hidden = page.items.length === 0;
@@ -818,11 +815,11 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
           );
           if (!candidates) return;
           candidates.forEach((element) => {
-            const poi = normalizePoi(element, categories, geometry, config);
-            if (!poi) return;
-            const key = `${poi.osmType}/${poi.osmId}`;
-            const existing = deduped.get(key);
-            if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
+            normalizePoiPassBys(element, categories, geometry, config).forEach((poi) => {
+              const key = poiKey(poi);
+              const existing = deduped.get(key);
+              if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
+            });
           });
           poiSectionStatus.completed += 1;
           poiSectionStatus.failed.delete(section.index);
