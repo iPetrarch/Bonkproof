@@ -55,7 +55,7 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     preferCanvas: true,
   }).setView([52.5, 9.0], 6);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map);
