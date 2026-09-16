@@ -95,7 +95,8 @@ test('POI warning rendering suppresses incomplete physical gaps but keeps routeb
   assert.match(renderer, /poiSectionStatus\.failed\.size > 0/);
   assert.match(renderer, /Versorgungslücken werden geprüft/);
   assert.match(renderer, /Prüfung unvollständig/);
-  assert.match(app, /buildFoundPoiWarnings\(currentPois, currentRouteDistanceMeters, gapSettings\)/);
+  assert.match(app, /buildFoundPoiWarnings\(activeFoundResupplyPois\(\), currentRouteDistanceMeters, gapSettings\)/);
+  assert.match(app, /filterReliableSelectedPoiIds\(currentPois, selectedPoiIds, resupplyProfile, poiKey\)/);
   assert.match(app, /ohne gefundenen POI/);
   assert.doesNotMatch(app, /formatDistance\(warning\.lengthM\) without a selected stop/);
   assert.match(app, /activeTab === 'routebook'\s*\? buildRoutebookWarnings/);
@@ -247,13 +248,15 @@ test('reload is disabled before a route, preserves IDs and prevents parallel sea
   assert.match(app, /Overpass begrenzt derzeit die Anfragen/);
 });
 
-test('pagination and filters do not trigger Overpass and reset page state locally', () => {
+test('pagination and dynamic filters update locally while new searches are explicit', () => {
   assert.match(app, /poiNext\.addEventListener\('click', \(\) => \{[\s\S]*?renderPois\(currentPois, currentCategories\)/);
-  assert.match(app, /poiPage = 1;\s*renderPois\(currentPois, currentCategories\)/);
-  assert.match(app, /activeCategoryIds = new Set\(INITIAL_CATEGORY_IDS\)/);
+  assert.match(app, /const categoryId = button\.dataset\.categoryToggle/);
+  assert.match(app, /if \(enabling\) activeCategoryIds\.add\(categoryId\);\s*else activeCategoryIds\.delete\(categoryId\);/);
+  assert.match(app, /if \(enabling && currentParsedRoute\)[\s\S]*?loadPois\(currentParsedRoute, true, false\)/);
+  assert.match(app, /defaultEnabledCategoryIds\(config\)/);
   assert.match(app, /selectedPoiIds\.has\(poiKey\(poi\)\)/);
   assert.match(app, /const mapPois = visiblePois\.concat\(currentPois\.filter/);
-  assert.match(index, /class="category-row"[^>]*aria-pressed="true"/);
+  assert.match(index, /id="poi-categories" class="poi-categories" hidden><\/div>/);
   assert.match(app, /Keine POI-Kategorie ausgewählt/);
 });
 
