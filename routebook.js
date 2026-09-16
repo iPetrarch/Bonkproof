@@ -127,28 +127,42 @@ export function buildRoutebook(pois, selectedPoiIds, routeDistanceMeters, gapCon
   };
 }
 
-function gapMetadata(startMeters, endMeters) {
+function gapMetadata(startMeters, endMeters, gapType, fromEndpoint, toEndpoint) {
   return {
-    gapType: 'resupply',
+    gapType,
     startMeters,
     endMeters,
     startKm: startMeters / 1000,
     endKm: endMeters / 1000,
+    fromKind: fromEndpoint.kind,
+    toKind: toEndpoint.kind,
+    fromPoiId: fromEndpoint.poiId || null,
+    toPoiId: toEndpoint.poiId || null,
+    hasPreviousQualifyingPoi: fromEndpoint.kind === 'poi',
+    hasNextQualifyingPoi: toEndpoint.kind === 'poi',
   };
 }
 
-function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig = ROUTEBOOK_GAP_WARNING_M) {
+function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig = ROUTEBOOK_GAP_WARNING_M, gapType = 'resupply') {
   const routebook = buildRoutebook(pois, selectedPoiIds, routeDistanceMeters, gapConfig);
   const warnings = routebook.entries.slice(1)
     .map((entry, index) => ({ entry, previous: routebook.entries[index] }))
     .filter(({ entry }) => entry.gapSeverity)
-    .map(({ entry, previous }) => ({
-      from: previous.kind === 'stop' ? previous.poi.name : 'Start',
-      to: entry.kind === 'stop' ? entry.poi.name : 'Ziel',
-      ...gapMetadata(previous.routeMeters, entry.routeMeters),
-      lengthM: entry.distanceFromPreviousM,
-      severity: entry.gapSeverity,
-    }));
+    .map(({ entry, previous }) => {
+      const fromEndpoint = previous.kind === 'stop'
+        ? { kind: 'poi', poiId: poiKey(previous.poi) }
+        : { kind: 'start', poiId: null };
+      const toEndpoint = entry.kind === 'stop'
+        ? { kind: 'poi', poiId: poiKey(entry.poi) }
+        : { kind: 'route-end', poiId: null };
+      return {
+        from: previous.kind === 'stop' ? previous.poi.name : 'Start',
+        to: entry.kind === 'stop' ? entry.poi.name : 'Ziel',
+        ...gapMetadata(previous.routeMeters, entry.routeMeters, gapType, fromEndpoint, toEndpoint),
+        lengthM: entry.distanceFromPreviousM,
+        severity: entry.gapSeverity,
+      };
+    });
   return {
     warnings,
     longestGapM: routebook.longestGapM,
@@ -159,21 +173,25 @@ function buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig =
   };
 }
 
-export function buildRoutebookWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig = ROUTEBOOK_GAP_WARNING_M) {
-  return buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig);
+export function buildRoutebookWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig = ROUTEBOOK_GAP_WARNING_M, gapType = 'resupply') {
+  return buildGapWarnings(pois, selectedPoiIds, routeDistanceMeters, gapConfig, gapType);
 }
 
-export function buildFoundPoiWarnings(pois, routeDistanceMeters, gapConfig = ROUTEBOOK_GAP_WARNING_M) {
+export function buildFoundPoiWarnings(pois, routeDistanceMeters, gapConfig = ROUTEBOOK_GAP_WARNING_M, gapType = 'resupply') {
   const severity = gapClassifier(gapConfig);
   const found = pois.filter((poi) => poi.status !== 'near-miss').sort((a, b) => a.routeKm - b.routeKm);
-  const points = [{ name: 'Start', routeMeters: 0 }, ...found.map((poi) => ({ name: poi.name, routeMeters: poi.routeKm * 1000 })), { name: 'Ziel', routeMeters: routeDistanceMeters }];
+  const points = [
+    { kind: 'start', name: 'Start', routeMeters: 0, poiId: null },
+    ...found.map((poi) => ({ kind: 'poi', name: poi.name, routeMeters: poi.routeKm * 1000, poiId: poiKey(poi) })),
+    { kind: 'route-end', name: 'Ziel', routeMeters: routeDistanceMeters, poiId: null },
+  ];
   const warnings = points.slice(1).map((to, index) => {
     const from = points[index];
     const lengthM = Math.max(0, to.routeMeters - from.routeMeters);
     return {
       from: from.name,
       to: to.name,
-      ...gapMetadata(from.routeMeters, to.routeMeters),
+      ...gapMetadata(from.routeMeters, to.routeMeters, gapType, from, to),
       lengthM,
       severity: severity.classify(lengthM),
     };
