@@ -14,6 +14,7 @@ deploy.work.local.ps1
 .deploy-state.json
 .deploy-state.home.json
 .deploy-state.work.json
+api/.geoapify-key.php
 
 # Logs / temporary output
 *.log
