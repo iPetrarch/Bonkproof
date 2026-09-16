@@ -1,0 +1,156 @@
+name: Refresh Overture POIs
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Optional Overture release (for example 2026-08-19.0). Leave empty for latest.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bonkproof-overture-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install importer dependencies
+        run: python -m pip install 'duckdb>=1.1'
+
+      - name: Select Overture release
+        id: release
+        shell: bash
+        env:
+          REQUESTED_RELEASE: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${REQUESTED_RELEASE:-}" ]]; then
+            release="$REQUESTED_RELEASE"
+          else
+            release="$(python scripts/discover-overture-release.py)"
+          fi
+          if [[ ! "$release" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+$ ]]; then
+            echo "Invalid Overture release: $release" >&2
+            exit 1
+          fi
+          echo "Using Overture release $release"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Build Germany POI database
+        run: |
+          mkdir -p data
+          python scripts/update-overture-places.py \
+            --release '${{ steps.release.outputs.release }}' \
+            --output data/overture-places.sqlite
+
+      - name: Verify generated database
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sqlite3
+          db = sqlite3.connect('data/overture-places.sqlite')
+          integrity = db.execute('PRAGMA integrity_check').fetchone()[0]
+          if integrity != 'ok':
+              raise SystemExit(f'SQLite integrity check failed: {integrity}')
+          total = db.execute('SELECT COUNT(*) FROM places').fetchone()[0]
+          supermarkets = db.execute("SELECT COUNT(*) FROM places WHERE category='supermarket'").fetchone()[0]
+          fuel = db.execute("SELECT COUNT(*) FROM places WHERE category='fuel'").fetchone()[0]
+          print(f'Rows: {total}; supermarkets: {supermarkets}; fuel: {fuel}')
+          if total < 1000 or supermarkets == 0 or fuel == 0:
+              raise SystemExit('Generated database looks implausibly small or misses core categories.')
+          PY
+
+      - name: Install SFTP password helper
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Validate deployment secrets
+        shell: bash
+        env:
+          BONKPROOF_SFTP_PASSWORD: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
+          BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
+        run: |
+          set -euo pipefail
+          for name in BONKPROOF_SFTP_PASSWORD BONKPROOF_SFTP_HOSTKEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required GitHub Actions secret '$name' is missing." >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify SFTP host key
+        shell: bash
+        env:
+          BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
+        run: |
+          set -euo pipefail
+          host='ssh.petrarch.de'
+          port='22'
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          known_hosts="$HOME/.ssh/known_hosts"
+          ssh-keyscan -T 10 -p "$port" "$host" > "$known_hosts" 2>/dev/null
+          chmod 600 "$known_hosts"
+          [[ -s "$known_hosts" ]] || { echo 'Could not retrieve the SFTP server host key.' >&2; exit 1; }
+
+          expected="$BONKPROOF_SFTP_HOSTKEY"
+          sha_lines="$(ssh-keygen -lf "$known_hosts" -E sha256)"
+          md5_lines="$(ssh-keygen -lf "$known_hosts" -E md5)"
+          if [[ "$expected" =~ (SHA256:[A-Za-z0-9+/=]+) ]]; then
+            grep -Fq "${BASH_REMATCH[1]}" <<< "$sha_lines" || { echo 'SFTP host-key fingerprint mismatch.' >&2; exit 1; }
+          elif [[ "$expected" =~ ([0-9A-Fa-f]{2}:){15}[0-9A-Fa-f]{2} ]]; then
+            fingerprint="${BASH_REMATCH[0],,}"
+            actual_md5="$(sed -n 's/.*MD5:\([^ ]*\).*/\1/p' <<< "$md5_lines" | tr 'A-F' 'a-f')"
+            grep -Fxq "$fingerprint" <<< "$actual_md5" || { echo 'SFTP host-key fingerprint mismatch.' >&2; exit 1; }
+          else
+            fingerprint="$(awk '{print $NF}' <<< "$expected")"
+            fingerprint="${fingerprint#SHA256:}"
+            actual_sha="$(sed -n 's/.*SHA256:\([^ ]*\).*/\1/p' <<< "$sha_lines")"
+            grep -Fxq "$fingerprint" <<< "$actual_sha" || { echo 'SFTP host-key fingerprint mismatch.' >&2; exit 1; }
+          fi
+
+      - name: Upload database atomically
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          host='ssh.petrarch.de'
+          port='22'
+          user='petrarch.de'
+          remote='/customers/e/4/0/petrarch.de/bonkproof-data'
+
+          sshpass -e sftp \
+            -P "$port" \
+            -oBatchMode=no \
+            -oPreferredAuthentications=password,keyboard-interactive \
+            -oPubkeyAuthentication=no \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$user@$host" <<EOF
+          -mkdir $remote
+          cd $remote
+          put data/overture-places.sqlite overture-places.sqlite.new
+          -rm overture-places.sqlite.previous
+          -rename overture-places.sqlite overture-places.sqlite.previous
+          rename overture-places.sqlite.new overture-places.sqlite
+          bye
+          EOF
+
+          echo 'Local Overture POI database refreshed.'
