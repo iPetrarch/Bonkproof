@@ -54,3 +54,16 @@ test('a spatially close return later in the ride remains a separate pass-by', ()
   assert.equal(passBys.length, 2);
   assert.ok(passBys[1].routeMeters - passBys[0].routeMeters > 1000);
 });
+
+test('the same road ridden out and back keeps two distant encounters', () => {
+  const parsed = route(
+    { lat: 53.0000, lon: 7.0000 },
+    { lat: 53.0000, lon: 7.0200 },
+    { lat: 53.0000, lon: 7.0000 },
+  );
+  const geometry = buildRouteGeometry(parsed);
+  const passBys = projectPoiPassBys({ lat: 53.0001, lon: 7.0040 }, geometry, 100);
+
+  assert.equal(passBys.length, 2);
+  assert.ok(passBys[1].routeMeters - passBys[0].routeMeters > 1000);
+});
