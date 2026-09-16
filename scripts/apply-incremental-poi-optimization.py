@@ -82,20 +82,20 @@ marker = "test('monthly importer uses Overture GeoParquet, new taxonomy fields a
 if marker not in test:
     raise SystemExit('Overture test file structure changed unexpectedly.')
 if "incremental category loading avoids full-route reloads" not in test:
-    test += r'''
+    test += '''
 
 test('incremental category loading avoids full-route reloads and local Overture pacing', () => {
   const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
-  assert.match(app, /loadedCategoryIds = new Set\(\)/);
-  assert.match(app, /loadPois\(currentParsedRoute, true, false, \[categoryId\]\)/);
-  assert.match(app, /loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
-  assert.match(app, /paceAfterWorkload = candidates\.poiProvider !== 'overture-local'/);
-  assert.match(app, /if \(paceAfterWorkload && workloadPosition < workloads\.length - 1\)/);
+  assert.ok(app.includes('loadedCategoryIds = new Set()'));
+  assert.ok(app.includes('loadPois(currentParsedRoute, true, false, [categoryId])'));
+  assert.ok(app.includes('loadPois(currentParsedRoute, true, false, [categoryId], [categoryId])'));
+  assert.ok(app.includes("paceAfterWorkload = candidates.poiProvider !== 'overture-local'"));
+  assert.ok(app.includes('if (paceAfterWorkload && workloadPosition < workloads.length - 1)'));
 });
 
 test('gap distance settings remain local-only and do not reload POIs', () => {
   const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
-  assert.match(app, /gapSettingInputs\.forEach\(\(input\) => input\.addEventListener\('input', applyGapSettingsFromInputs\)\)/);
+  assert.ok(app.includes("gapSettingInputs.forEach((input) => input.addEventListener('input', applyGapSettingsFromInputs))"));
   const applyStart = app.indexOf('function applyGapSettingsFromInputs()');
   const markerStart = app.indexOf('function markerIcon', applyStart);
   const block = app.slice(applyStart, markerStart);
