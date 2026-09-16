@@ -1,6 +1,6 @@
-export const POI_QUERY_SECTION_MAX_M = 50_000;
+export const POI_QUERY_SECTION_MAX_M = 20_000;
 export const POI_QUERY_OVERLAP_M = 1_000;
-export const POI_QUERY_ADAPTIVE_MIN_M = 20_000;
+export const POI_QUERY_ADAPTIVE_MIN_M = 2_500;
 export const POI_QUERY_RETRY_DELAY_MS = 350;
 export const POI_RATE_LIMIT_FALLBACK_MS = 30_000;
 export const POI_LIST_PAGE_SIZE = 20;
@@ -58,7 +58,7 @@ export function buildPoiQuerySections(parsed, maxMeters = POI_QUERY_SECTION_MAX_
 
 export function splitPoiQuerySection(section, minimumMeters = POI_QUERY_ADAPTIVE_MIN_M) {
   const length = section.coreEndMeters - section.coreStartMeters;
-  if (section.parentSectionId || length < minimumMeters * 2 || section.points.length < 2) return [];
+  if (length <= minimumMeters || section.points.length < 2) return [];
   const midpoint = section.coreStartMeters + length / 2;
   const overlap = POI_QUERY_OVERLAP_M;
   const make = (id, coreStartMeters, coreEndMeters) => ({
@@ -72,6 +72,37 @@ export function splitPoiQuerySection(section, minimumMeters = POI_QUERY_ADAPTIVE
     points: section.points.filter((point) => point.routeMeters === undefined || (point.routeMeters >= Math.max(section.queryStartMeters, coreStartMeters - overlap) && point.routeMeters <= Math.min(section.queryEndMeters, coreEndMeters + overlap))),
   });
   return [make(`${section.index}.1`, section.coreStartMeters, midpoint), make(`${section.index}.2`, midpoint, section.coreEndMeters)];
+}
+
+export function createPoiQueryWorkloads(sections, categories) {
+  return sections.map((section) => ({
+    id: String(section.index),
+    section,
+    categories: [...categories],
+  }));
+}
+
+export function splitPoiQueryWorkload(workload, minimumMeters = POI_QUERY_ADAPTIVE_MIN_M) {
+  const sectionParts = splitPoiQuerySection(workload.section, minimumMeters);
+  if (sectionParts.length === 2) {
+    return sectionParts.map((section) => ({
+      id: String(section.index),
+      section,
+      categories: [...workload.categories],
+    }));
+  }
+
+  if (workload.categories.length > 1) {
+    const midpoint = Math.ceil(workload.categories.length / 2);
+    const categoryGroups = [workload.categories.slice(0, midpoint), workload.categories.slice(midpoint)].filter((group) => group.length > 0);
+    return categoryGroups.map((categories, index) => ({
+      id: `${workload.id}.${index === 0 ? 'a' : 'b'}`,
+      section: workload.section,
+      categories,
+    }));
+  }
+
+  return [];
 }
 
 export function isRetryablePoiStatus(status) {

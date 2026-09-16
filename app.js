@@ -1,5 +1,5 @@
 import { DEFAULT_GAP_SETTINGS, buildFoundPoiWarnings, buildGapThresholds, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, normalizeGapSettings, poiKey, togglePoiSelection } from './routebook.js';
-import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQuerySection } from './poi-search.js';
+import { buildPoiQuerySections, createPoiQueryWorkloads, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQueryWorkload } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
 import { buildActiveCategories, buildOverpassQuery, defaultCategoryRadii, defaultEnabledCategoryIds, getGraceMeters, matchingCategory } from './poi-config.js';
@@ -101,7 +101,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
   function waitForPoiBackoff(milliseconds, section, signal, rateLimited = false) {
     const totalSeconds = Math.ceil(milliseconds / 1000);
     const label = rateLimited ? 'Overpass begrenzt derzeit die Anfragen.' : 'Neuer Versuch wird vorbereitet.';
-    setPoiStatus(`${label} Abschnitt ${section.index} von ${section.total}: neuer Versuch in ${totalSeconds} Sekunden.`);
+    setPoiStatus(`${label} Neuer Versuch in ${totalSeconds} Sekunden.`);
     return new Promise((resolve) => {
       const startedAt = Date.now();
       const timer = setInterval(() => {
@@ -111,7 +111,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
           clearInterval(timer);
           resolve();
         } else {
-          setPoiStatus(`${label} Abschnitt ${section.index} von ${section.total}: neuer Versuch in ${remaining} Sekunden.`);
+          setPoiStatus(`${label} Neuer Versuch in ${remaining} Sekunden.`);
         }
       }, 1000);
     });
@@ -143,7 +143,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     const incomplete = poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total);
     reloadPois.textContent = running
       ? 'POIs werden gesucht…'
-      : (incomplete ? 'Fehlgeschlagene Abschnitte erneut laden' : 'POIs neu laden');
+      : (incomplete ? 'Fehlgeschlagene Suchpakete erneut laden' : 'POIs neu laden');
     if (typeof poiWarningSummary !== 'undefined') renderWarnings();
   }
 
@@ -699,7 +699,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     if (activeTab !== 'routebook' && poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total)) {
       poiWarningSummary.hidden = false;
       poiWarningSummary.className = 'warning-summary is-incomplete';
-      poiWarningSummary.textContent = `Prüfung unvollständig – einige Routenabschnitte konnten nicht geprüft werden. Fehlende Abschnitte: ${failedPoiSections.map((section) => section.index).join(', ')}.`;
+      poiWarningSummary.textContent = `Prüfung unvollständig – ${failedPoiSections.length} Suchpaket${failedPoiSections.length === 1 ? '' : 'e'} konnten selbst nach automatischer Verkleinerung nicht geladen werden.`;
       poiWarningList.hidden = true;
       poiWarningList.innerHTML = '';
       renderWarningLayer();
@@ -851,9 +851,6 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
   async function loadPois(parsed, preserveSelection = false, retryFailedOnly = false) {
     if (poiSearchRunning) return;
     const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
-    const sectionsToQuery = retryFailedOnly ? failedPoiSections : currentPoiSections;
-    if (!retryFailedOnly) poiSectionStatus = { total: currentPoiSections.length, completed: 0, failed: new Set() };
-    poiSectionStatus.started = true;
     setPoiSearchRunning(true);
     poiAbortController?.abort();
     poiAbortController = new AbortController();
@@ -877,16 +874,22 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
 
       const geometry = buildRouteGeometry(parsed);
       const deduped = new Map((retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]));
-      const sections = [...sectionsToQuery];
-      const failedSections = [];
-      for (let sectionPosition = 0; sectionPosition < sections.length; sectionPosition += 1) {
-        const section = sections[sectionPosition];
+      const workloads = retryFailedOnly
+        ? [...failedPoiSections]
+        : createPoiQueryWorkloads(currentPoiSections, categories);
+      const failedWorkloads = [];
+      poiSectionStatus = { total: workloads.length, completed: 0, failed: new Set(), started: true };
+
+      for (let workloadPosition = 0; workloadPosition < workloads.length; workloadPosition += 1) {
+        const workload = workloads[workloadPosition];
+        const section = workload.section;
+        const workloadCategories = workload.categories;
         if (signal.aborted) return;
-        setPoiStatus(`POIs werden gesucht: Abschnitt ${section.index} von ${section.total}`);
+        setPoiStatus(`POIs werden gesucht: Suchpaket ${poiSectionStatus.completed + 1} von ${poiSectionStatus.total}`);
         try {
           let rateLimited = false;
           const candidates = await fetchPoiSectionWithRetry(
-            (currentSection, currentSignal) => fetchOsmCandidates(categories, currentSection, config, currentSignal),
+            (currentSection, currentSignal) => fetchOsmCandidates(workloadCategories, currentSection, config, currentSignal),
             section,
             {
               signal,
@@ -898,38 +901,39 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
           );
           if (!candidates) return;
           candidates.forEach((element) => {
-            normalizePoiPassBys(element, categories, geometry, config).forEach((poi) => {
+            normalizePoiPassBys(element, workloadCategories, geometry, config).forEach((poi) => {
               const key = poiKey(poi);
               const existing = deduped.get(key);
               if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
             });
           });
           poiSectionStatus.completed += 1;
-          poiSectionStatus.failed.delete(section.index);
+          poiSectionStatus.failed.delete(workload.id);
         } catch (error) {
           if (error?.name === 'AbortError') return;
-          const subSections = Number(error?.status) === 504 ? splitPoiQuerySection(section) : [];
-          if (subSections.length === 2) {
-            poiSectionStatus.total += 1;
-            sections.splice(sectionPosition + 1, 0, ...subSections);
-            setPoiStatus(`Abschnitt ${section.index} war zu groß. Neuer Versuch in Teilabschnitten ${subSections.map((part) => part.index).join(' und ')}.`);
+          const replacements = Number(error?.status) === 504 ? splitPoiQueryWorkload(workload) : [];
+          if (replacements.length > 0) {
+            poiSectionStatus.total += replacements.length - 1;
+            workloads.splice(workloadPosition + 1, 0, ...replacements);
+            setPoiStatus('Ein Suchpaket war zu groß und wird automatisch weiter aufgeteilt.');
             continue;
           }
-          failedSections.push(section.index);
-          poiSectionStatus.failed.add(section.index);
+          failedWorkloads.push(workload);
+          poiSectionStatus.failed.add(workload.id);
+          poiSectionStatus.completed += 1;
           console.error(error);
         }
-        if (section.index !== sections.at(-1)?.index) await waitForPoiBackoff(2500, section, signal);
+        if (workloadPosition < workloads.length - 1) await waitForPoiBackoff(1000, section, signal);
       }
 
       const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
       selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
-      failedPoiSections = sections.filter((section) => failedSections.includes(section.index));
+      failedPoiSections = failedWorkloads;
       renderPois(pois, config.categories);
       setPoiStatus(
-        failedSections.length > 0
-          ? `POI-Suche teilweise erfolgreich: Abschnitte ${failedSections.join(', ')} fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Abschnitten verfügbar.`
-          : `${pois.length} POIs aus ${sections.length} erfolgreichen Abschnitten geladen.`,
+        failedWorkloads.length > 0
+          ? `POI-Suche teilweise erfolgreich: ${failedWorkloads.length} Suchpaket${failedWorkloads.length === 1 ? '' : 'e'} endgültig fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Paketen verfügbar.`
+          : `${pois.length} POIs vollständig geladen (${poiSectionStatus.completed} Suchpakete verarbeitet).`,
       );
     } catch (error) {
       if (error?.name === 'AbortError') return;
