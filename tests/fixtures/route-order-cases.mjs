@@ -1,6 +1,6 @@
 const category = { id: 'supermarket', label: 'Supermarket' };
 
-function poi({ osmId, name, routeKm, lat = 53, lon = 7, offRouteM = 20 }) {
+function poi({ osmId, name, routeKm, lat = 53, lon = 7, offRouteM = 20, passId = null, passIndex = null, passCount = null }) {
   return {
     osmType: 'node',
     osmId,
@@ -11,6 +11,7 @@ function poi({ osmId, name, routeKm, lat = 53, lon = 7, offRouteM = 20 }) {
     offRouteM,
     status: 'match',
     category,
+    ...(passId ? { passId, passIndex, passCount } : {}),
   };
 }
 
@@ -34,11 +35,11 @@ export const routeOrderCases = {
     expectedOrder: ['Outbound stop', 'Inbound stop'],
   },
   repeatedPhysicalPoi: {
-    description: 'one physical POI may have more than one route pass-by',
+    description: 'one physical POI may have more than one independently selectable route pass-by',
     routeDistanceM: 120000,
     pois: [
-      poi({ osmId: 301, name: 'Village shop', routeKm: 31, lat: 53.3, lon: 7.3, offRouteM: 15 }),
-      poi({ osmId: 301, name: 'Village shop', routeKm: 94, lat: 53.3, lon: 7.3, offRouteM: 18 }),
+      poi({ osmId: 301, name: 'Village shop', routeKm: 31, lat: 53.3, lon: 7.3, offRouteM: 15, passId: 'pass-1', passIndex: 1, passCount: 2 }),
+      poi({ osmId: 301, name: 'Village shop', routeKm: 94, lat: 53.3, lon: 7.3, offRouteM: 18, passId: 'pass-2', passIndex: 2, passCount: 2 }),
     ],
     expectedRouteKm: [31, 94],
   },

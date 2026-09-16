@@ -21,6 +21,7 @@ $publishFiles = @(
     'app.js',
     'routebook.js',
     'poi-search.js',
+    'poi-projection.js',
     'poi-clustering.js',
     'config/poi-categories.json'
 )
