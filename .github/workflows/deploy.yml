@@ -1,0 +1,91 @@
+name: Deploy Bonkproof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bonkproof-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run regression tests
+        run: npm test
+
+      - name: Install WinSCP
+        shell: pwsh
+        run: choco install winscp -y --no-progress
+
+      - name: Validate deployment configuration
+        shell: pwsh
+        env:
+          BONKPROOF_SFTP_HOST: ${{ secrets.BONKPROOF_SFTP_HOST }}
+          BONKPROOF_SFTP_USER: ${{ secrets.BONKPROOF_SFTP_USER }}
+          BONKPROOF_SFTP_PASSWORD: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
+          BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
+          BONKPROOF_SFTP_REMOTE_PATH: ${{ secrets.BONKPROOF_SFTP_REMOTE_PATH }}
+          BONKPROOF_SFTP_PORT: ${{ vars.BONKPROOF_SFTP_PORT }}
+        run: |
+          $required = @(
+            'BONKPROOF_SFTP_HOST',
+            'BONKPROOF_SFTP_USER',
+            'BONKPROOF_SFTP_PASSWORD',
+            'BONKPROOF_SFTP_HOSTKEY',
+            'BONKPROOF_SFTP_REMOTE_PATH'
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Required GitHub Actions secret '$name' is missing."
+            }
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:BONKPROOF_SFTP_PORT)) {
+            $parsedPort = 0
+            if (-not [int]::TryParse($env:BONKPROOF_SFTP_PORT, [ref]$parsedPort)) {
+              throw 'BONKPROOF_SFTP_PORT must be an integer when configured.'
+            }
+          }
+
+      - name: Deploy to production
+        shell: pwsh
+        env:
+          BONKPROOF_SFTP_HOST: ${{ secrets.BONKPROOF_SFTP_HOST }}
+          BONKPROOF_SFTP_USER: ${{ secrets.BONKPROOF_SFTP_USER }}
+          BONKPROOF_SFTP_PASSWORD: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
+          BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
+          BONKPROOF_SFTP_REMOTE_PATH: ${{ secrets.BONKPROOF_SFTP_REMOTE_PATH }}
+          BONKPROOF_SFTP_PORT: ${{ vars.BONKPROOF_SFTP_PORT }}
+        run: |
+          @'
+          $port = if ([string]::IsNullOrWhiteSpace($env:BONKPROOF_SFTP_PORT)) { 22 } else { [int]$env:BONKPROOF_SFTP_PORT }
+          @{
+              HostName = $env:BONKPROOF_SFTP_HOST
+              PortNumber = $port
+              UserName = $env:BONKPROOF_SFTP_USER
+              RemotePath = $env:BONKPROOF_SFTP_REMOTE_PATH
+              SshHostKeyFingerprint = $env:BONKPROOF_SFTP_HOSTKEY
+              PasswordEnvironmentVariable = 'BONKPROOF_SFTP_PASSWORD'
+          }
+          '@ | Set-Content -LiteralPath '.\deploy.home.local.ps1' -Encoding UTF8
+
+          .\deploy.ps1 -Profile home -Force
+
+      - name: Remove temporary deployment files
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item '.\deploy.home.local.ps1' -Force -ErrorAction SilentlyContinue
+          Remove-Item '.\.deploy-state.home.json' -Force -ErrorAction SilentlyContinue
