@@ -46,6 +46,12 @@ test('GitHub deployment uses direct OpenSSH SFTP without WinSCP', () => {
   assert.doesNotMatch(workflow, /deploy\.ps1 -Profile home/);
 });
 
+test('password-authenticated SFTP is not forced into OpenSSH batch-file mode', () => {
+  assert.match(workflow, /-oBatchMode=no/);
+  assert.match(workflow, /PreferredAuthentications=password,keyboard-interactive/);
+  assert.doesNotMatch(workflow, /\n\s+-b\s/);
+});
+
 test('GitHub deployment uploads the complete production publish set', () => {
   for (const path of [
     'index.html',
