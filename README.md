@@ -39,6 +39,22 @@ Everything else comes later.
 - **Self-hostable.** Bonkproof should remain easy to run without a complex cloud stack.
 - **Long-distance friendly.** Resupply gaps and practical stops matter more than generic map search.
 
+## External services, data and privacy
+
+Bonkproof parses the selected GPX file locally in the browser. The GPX file itself is not uploaded to a Bonkproof backend.
+
+The current web app does make direct browser requests to external services:
+
+- **OpenStreetMap data / Overpass API:** POI searches are sent to the public Overpass endpoint at `overpass-api.de`. The request contains bounding boxes derived from the loaded route, so route-location information is necessarily disclosed to that external service even though the original GPX file is not uploaded.
+- **OpenStreetMap raster tiles:** the map loads tiles from OpenStreetMap infrastructure. As with normal web requests, the tile service can receive the user's IP address and standard HTTP request metadata.
+- **Leaflet via unpkg:** Leaflet JavaScript and CSS are currently loaded from `unpkg.com`, so opening the app also causes requests to that CDN.
+
+OpenStreetMap data is available under the Open Data Commons Open Database License (ODbL). Public use requires OpenStreetMap attribution and a clear indication of the ODbL. The map currently shows `© OpenStreetMap contributors` through Leaflet attribution. See https://www.openstreetmap.org/copyright and the OpenStreetMap Foundation attribution guidelines for the applicable requirements.
+
+The public OpenStreetMap tile servers and public Overpass instances are shared community infrastructure, not guaranteed application backends. Bonkproof should keep requests bounded and conservative, handle rate limits and temporary failures, and avoid bulk tile downloading or prefetching.
+
+Before a public production deployment, the site's privacy information should describe these external requests and their purpose. Hosting or replacing the external dependencies may change that disclosure requirement.
+
 ## Status
 
 Bonkproof is at the beginning of development. Expect breaking changes and incomplete features until the first tagged release.
