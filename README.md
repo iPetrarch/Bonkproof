@@ -34,32 +34,37 @@ Everything else comes later.
 ## Project principles
 
 - **Privacy-friendly by default.** Basic GPX processing should happen locally where practical.
-- **Open data first.** OpenStreetMap-derived POI data remains preferred where practical.
+- **Open data first.** Bonkproof prefers locally hosted Overture Maps Places data for POI lookup.
 - **Useful before clever.** A small reliable routebook beats a feature-heavy planner.
 - **Self-hostable.** Bonkproof should remain easy to run without a complex cloud stack.
 - **Long-distance friendly.** Resupply gaps and practical stops matter more than generic map search.
+
+## POI architecture
+
+Production POI lookup is designed around a locally hosted SQLite database built from the monthly Overture Maps Places release. `scripts/update-overture-places.py` downloads the configured Overture release for the configured bounding box through DuckDB, normalizes relevant Overture taxonomy values to Bonkproof categories, and builds an indexed SQLite database with an RTree spatial index.
+
+The browser requests only small bounding boxes and Bonkproof category IDs from `api/places.php`. The API performs a local indexed SQLite query and returns only matching POIs. The GPX file itself remains in the browser.
+
+Until a local Overture database is installed on the production host, or for an unsupported provider-specific category such as a specific parcel-locker operator, the browser bridge can fall back to the existing public OpenStreetMap Overpass lookup. This keeps the application usable during migration but is not the intended long-term primary path.
+
+See [`docs/overture-local.md`](docs/overture-local.md) for import and server setup details.
 
 ## External services, data and privacy
 
 Bonkproof parses the selected GPX file locally in the browser. The GPX file itself is not uploaded to a Bonkproof backend.
 
-For supported POI categories, the production app prefers **Geoapify Places** through Bonkproof's same-origin PHP proxy. The browser sends only a route-derived bounding box and the requested POI categories to that proxy; the proxy then calls Geoapify with the server-side API key. This means the original GPX file is still not uploaded, but route-location information is sent to the Bonkproof web server and onward to Geoapify. Because Geoapify is called by the proxy, Geoapify normally sees the Bonkproof server request rather than a direct browser request.
+With the local Overture database installed, POI searches send route-derived bounding boxes to Bonkproof's own `api/places.php` endpoint. Those lookups are resolved locally against the monthly Overture database and do not require a third-party live POI API request.
 
-If the Geoapify proxy is unavailable, not configured, or the requested POI category is not mapped safely, Bonkproof falls back to the public OpenStreetMap Overpass API. In that fallback case, the browser sends route-derived bounding boxes directly to `overpass-api.de`.
+The web app still uses these external services:
 
-The web app also uses these external services:
-
-- **OpenStreetMap data / Overpass API:** fallback POI searches may be sent to the public Overpass endpoint at `overpass-api.de`.
+- **OpenStreetMap data / Overpass API:** temporary fallback POI searches may be sent to the public Overpass endpoint at `overpass-api.de` if the local Overture database is unavailable or a query cannot be represented by the local provider.
 - **OpenStreetMap raster tiles:** the map loads tiles from OpenStreetMap infrastructure. As with normal web requests, the tile service can receive the user's IP address and standard HTTP request metadata.
 - **Leaflet via unpkg:** Leaflet JavaScript and CSS are currently loaded from `unpkg.com`, so opening the app also causes requests to that CDN.
-
-The Geoapify API key is never committed to the repository or delivered to browser JavaScript. Production deployment writes it into an ignored PHP configuration file on the server from a GitHub Actions repository secret. The proxy only accepts a fixed allowlist of POI categories and bounded search rectangles.
-
-OpenStreetMap data is available under the Open Data Commons Open Database License (ODbL). Public use requires OpenStreetMap attribution and a clear indication of the ODbL. The map currently shows `© OpenStreetMap contributors` through Leaflet attribution. See https://www.openstreetmap.org/copyright and the OpenStreetMap Foundation attribution guidelines for the applicable requirements.
+- **Overture Maps data download:** the monthly server-side import reads Overture Places GeoParquet from Overture's public cloud distribution. End users do not contact Overture during normal POI lookup.
 
 The public OpenStreetMap tile servers and public Overpass instances are shared community infrastructure, not guaranteed application backends. Bonkproof should keep fallback requests bounded and conservative, handle rate limits and temporary failures, and avoid bulk tile downloading or prefetching.
 
-Before public production use, the site's privacy information should describe the Geoapify proxy flow, possible Overpass fallback, OpenStreetMap tile requests and unpkg dependency. Hosting or replacing these external dependencies may change that disclosure requirement.
+Before public production use, the site's privacy information should describe the local POI API, possible Overpass fallback, OpenStreetMap tile requests and unpkg dependency. Hosting or replacing these external dependencies may change that disclosure requirement.
 
 ## Status
 

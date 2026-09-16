@@ -78,25 +78,16 @@ jobs:
 
           if [[ "$expected" =~ (SHA256:[A-Za-z0-9+/=]+) ]]; then
             fingerprint="${BASH_REMATCH[1]}"
-            grep -Fq "$fingerprint" <<< "$sha_lines" || {
-              echo 'SFTP host-key fingerprint does not match the configured secret.' >&2
-              exit 1
-            }
+            grep -Fq "$fingerprint" <<< "$sha_lines" || { echo 'SFTP host-key fingerprint does not match the configured secret.' >&2; exit 1; }
           elif [[ "$expected" =~ ([0-9A-Fa-f]{2}:){15}[0-9A-Fa-f]{2} ]]; then
             fingerprint="${BASH_REMATCH[0],,}"
             actual_md5="$(sed -n 's/.*MD5:\([^ ]*\).*/\1/p' <<< "$md5_lines" | tr 'A-F' 'a-f')"
-            grep -Fxq "$fingerprint" <<< "$actual_md5" || {
-              echo 'SFTP host-key fingerprint does not match the configured secret.' >&2
-              exit 1
-            }
+            grep -Fxq "$fingerprint" <<< "$actual_md5" || { echo 'SFTP host-key fingerprint does not match the configured secret.' >&2; exit 1; }
           else
             fingerprint="$(awk '{print $NF}' <<< "$expected")"
             actual_sha="$(sed -n 's/.*SHA256:\([^ ]*\).*/\1/p' <<< "$sha_lines")"
             fingerprint="${fingerprint#SHA256:}"
-            grep -Fxq "$fingerprint" <<< "$actual_sha" || {
-              echo 'Unsupported or non-matching SFTP host-key fingerprint format.' >&2
-              exit 1
-            }
+            grep -Fxq "$fingerprint" <<< "$actual_sha" || { echo 'Unsupported or non-matching SFTP host-key fingerprint format.' >&2; exit 1; }
           fi
 
           echo 'SFTP host key verified.'
@@ -105,19 +96,12 @@ jobs:
         shell: bash
         env:
           SSHPASS: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
-          BONKPROOF_GEOAPIFY_API_KEY: ${{ secrets.BONKPROOF_GEOAPIFY_API_KEY }}
         run: |
           set -euo pipefail
-
           host='ssh.petrarch.de'
           port='22'
           user='petrarch.de'
           remote='/customers/e/4/0/petrarch.de/httpd.www/bonkproof'
-
-          mkdir -p api
-          encoded_key="$(printf '%s' "${BONKPROOF_GEOAPIFY_API_KEY:-}" | base64 -w0)"
-          printf "<?php\nreturn base64_decode('%s');\n" "$encoded_key" > api/.geoapify-key.php
-          trap 'rm -f api/.geoapify-key.php' EXIT
 
           sshpass -e sftp \
             -P "$port" \
@@ -137,14 +121,13 @@ jobs:
           put poi-projection.js
           put poi-clustering.js
           put poi-config.js
-          put poi-provider-geoapify.js
+          put poi-provider-overture.js
           put resupply-profile.js
           -mkdir config
           put config/poi-categories.json config/poi-categories.json
           put config/resupply-profile.json config/resupply-profile.json
           -mkdir api
           put api/places.php api/places.php
-          put api/.geoapify-key.php api/.geoapify-key.php
           bye
           EOF
 

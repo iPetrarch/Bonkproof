@@ -25,5 +25,13 @@ jobs:
         with:
           node-version: 22
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Run regression tests
         run: npm test
+
+      - name: Compile maintenance scripts
+        run: python -m py_compile scripts/discover-overture-release.py scripts/update-overture-places.py
