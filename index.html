@@ -97,17 +97,33 @@
         </div>
       </section>
 
-       <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>
+      <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>
         <div class="panel-heading">
           <div>
             <p class="eyebrow">v0.2 routebook test</p>
             <h2 id="routebook-heading">Selected stops</h2>
           </div>
         </div>
+
+        <fieldset class="gap-settings" aria-describedby="gap-threshold-preview gap-settings-error">
+          <legend>Versorgungslücken</legend>
+          <label>
+            <span>Critical-Referenz</span>
+            <span class="gap-input"><input id="gap-critical-km" type="number" min="1" max="500" step="1" value="30" inputmode="decimal"> km</span>
+          </label>
+          <div class="gap-percentage-grid">
+            <label><span>Info ab</span><span class="gap-input"><input id="gap-info-percent" type="number" min="1" max="99" step="1" value="66" inputmode="numeric"> %</span></label>
+            <label><span>Warning ab</span><span class="gap-input"><input id="gap-warning-percent" type="number" min="1" max="99" step="1" value="80" inputmode="numeric"> %</span></label>
+            <label><span>Critical ab</span><span class="gap-input"><input id="gap-critical-percent" type="number" min="1" max="100" step="1" value="95" inputmode="numeric"> %</span></label>
+          </div>
+          <p id="gap-threshold-preview" class="gap-threshold-preview"></p>
+          <p id="gap-settings-error" class="gap-settings-error" role="alert" hidden></p>
+        </fieldset>
+
         <p id="routebook-summary" class="status-copy"></p>
         <div id="routebook-empty" class="routebook-empty">Choose POIs in the POIs tab to build your routebook.</div>
         <ol id="routebook-list" class="routebook-list" hidden></ol>
-       </section>
+      </section>
 
     </section>
   </main>
