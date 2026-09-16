@@ -134,23 +134,69 @@ jobs:
           host='ssh.petrarch.de'
           port='22'
           user='petrarch.de'
-          remote='/customers/e/4/0/petrarch.de/bonkproof-data'
+          webroot='/customers/e/4/0/petrarch.de/httpd.www'
+          remote="$webroot/bonkproof/data"
 
-          sshpass -e sftp \
+          verify_output="$(sshpass -e sftp \
             -P "$port" \
             -oBatchMode=no \
             -oPreferredAuthentications=password,keyboard-interactive \
             -oPubkeyAuthentication=no \
             -oStrictHostKeyChecking=yes \
             -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$user@$host" <<EOF
+            "$user@$host" 2>&1 <<EOF
+          -mkdir $webroot/bonkproof
           -mkdir $remote
           cd $remote
+          pwd
+          bye
+          EOF
+          )"
+          printf '%s\n' "$verify_output"
+          grep -Fq "Remote working directory: $remote" <<< "$verify_output" || {
+            echo 'Could not enter the protected Bonkproof data directory.' >&2
+            exit 1
+          }
+
+          upload_output="$(sshpass -e sftp \
+            -P "$port" \
+            -oBatchMode=no \
+            -oPreferredAuthentications=password,keyboard-interactive \
+            -oPubkeyAuthentication=no \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$user@$host" 2>&1 <<EOF
+          cd $remote
+          put data/.htaccess .htaccess
           put data/overture-places.sqlite overture-places.sqlite.new
           -rm overture-places.sqlite.previous
           -rename overture-places.sqlite overture-places.sqlite.previous
           rename overture-places.sqlite.new overture-places.sqlite
+          ls -l overture-places.sqlite
           bye
           EOF
+          )"
+          printf '%s\n' "$upload_output"
+          grep -Fq 'overture-places.sqlite' <<< "$upload_output" || {
+            echo 'Uploaded Overture database could not be verified.' >&2
+            exit 1
+          }
+
+          cleanup_output="$(sshpass -e sftp \
+            -P "$port" \
+            -oBatchMode=no \
+            -oPreferredAuthentications=password,keyboard-interactive \
+            -oPubkeyAuthentication=no \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$user@$host" 2>&1 <<EOF
+          cd $webroot
+          -rm overture-places.sqlite
+          -rm overture-places.sqlite.new
+          -rm overture-places.sqlite.previous
+          bye
+          EOF
+          )"
+          printf '%s\n' "$cleanup_output"
 
           echo 'Local Overture POI database refreshed.'

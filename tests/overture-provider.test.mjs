@@ -10,8 +10,10 @@ import {
 
 const index = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const workflow = fs.readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+const refreshWorkflow = fs.readFileSync(new URL('../.github/workflows/refresh-overture.yml', import.meta.url), 'utf8');
 const proxy = fs.readFileSync(new URL('../api/places.php', import.meta.url), 'utf8');
 const importer = fs.readFileSync(new URL('../scripts/update-overture-places.py', import.meta.url), 'utf8');
+const dataAccess = fs.readFileSync(new URL('../data/.htaccess', import.meta.url), 'utf8');
 
 const category = (id, osm) => ({ id, osm });
 
@@ -67,12 +69,22 @@ test('production deploy uploads the local provider and API without a POI API sec
   assert.doesNotMatch(workflow, /GEOAPIFY|geoapify/i);
 });
 
-test('local POI API uses SQLite RTree and bounded allowlisted queries', () => {
+test('local POI API uses protected in-app SQLite data and bounded allowlisted queries', () => {
   assert.match(proxy, /\$allowedCategories = \[/);
   assert.match(proxy, /places_rtree/);
   assert.match(proxy, /PDO\('sqlite:'/);
+  assert.match(proxy, /dirname\(__DIR__\) \. '\/data\/overture-places\.sqlite'/);
   assert.match(proxy, /\(\$east - \$west\) > 1\.0/);
   assert.match(proxy, /LIMIT 5000/);
+  assert.match(dataAccess, /Require all denied/);
+  assert.match(dataAccess, /Deny from all/);
+});
+
+test('refresh workflow targets the protected Bonkproof data directory and removes the accidental root upload', () => {
+  assert.match(refreshWorkflow, /remote="\$webroot\/bonkproof\/data"/);
+  assert.match(refreshWorkflow, /put data\/\.htaccess \.htaccess/);
+  assert.match(refreshWorkflow, /cd \$webroot[\s\S]*-rm overture-places\.sqlite/);
+  assert.doesNotMatch(refreshWorkflow, /petrarch\.de\/bonkproof-data/);
 });
 
 test('monthly importer uses Overture GeoParquet, new taxonomy fields and generated SQLite data', () => {
