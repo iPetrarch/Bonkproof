@@ -1,4 +1,4 @@
-import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, poiKey, ROUTEBOOK_GAP_WARNING_M, togglePoiSelection } from './routebook.js';
+import { DEFAULT_GAP_SETTINGS, buildFoundPoiWarnings, buildGapThresholds, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, normalizeGapSettings, poiKey, togglePoiSelection } from './routebook.js';
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQuerySection } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
@@ -42,6 +42,13 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   const poiWarningSummary = document.getElementById('poi-warning-summary');
   const poiWarningList = document.getElementById('poi-warning-list');
   const reloadPois = document.getElementById('reload-pois');
+  const gapCriticalKm = document.getElementById('gap-critical-km');
+  const gapInfoPercent = document.getElementById('gap-info-percent');
+  const gapWarningPercent = document.getElementById('gap-warning-percent');
+  const gapCriticalPercent = document.getElementById('gap-critical-percent');
+  const gapThresholdPreview = document.getElementById('gap-threshold-preview');
+  const gapSettingsError = document.getElementById('gap-settings-error');
+  const gapSettingInputs = [gapCriticalKm, gapInfoPercent, gapWarningPercent, gapCriticalPercent];
 
   const map = L.map('map', {
     zoomControl: true,
@@ -72,6 +79,7 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   let poiPage = 1;
   let activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
   let activeTab = 'pois';
+  let gapSettings = { ...DEFAULT_GAP_SETTINGS };
   const poiMarkers = new Map();
 
   function showError(message) {
@@ -256,6 +264,39 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
 
   function formatRouteKm(meters) {
     return `km ${(meters / 1000).toFixed(1)}`;
+  }
+
+  function formatThresholdKm(meters) {
+    const km = meters / 1000;
+    return `${Number.isInteger(km) ? km.toFixed(0) : km.toFixed(1)} km`;
+  }
+
+  function renderGapSettingsPreview() {
+    const thresholds = buildGapThresholds(gapSettings);
+    gapThresholdPreview.textContent = `Info > ${formatThresholdKm(thresholds.infoM)} · Warning > ${formatThresholdKm(thresholds.warningM)} · Critical > ${formatThresholdKm(thresholds.criticalM)}`;
+  }
+
+  function applyGapSettingsFromInputs() {
+    try {
+      const next = normalizeGapSettings({
+        criticalDistanceKm: gapCriticalKm.value,
+        infoPercent: gapInfoPercent.value,
+        warningPercent: gapWarningPercent.value,
+        criticalPercent: gapCriticalPercent.value,
+      });
+      gapSettings = next;
+      gapSettingsError.hidden = true;
+      gapSettingsError.textContent = '';
+      gapSettingInputs.forEach((input) => input.removeAttribute('aria-invalid'));
+      renderGapSettingsPreview();
+      renderRoutebook();
+      renderWarnings();
+      renderWarningLayer();
+    } catch (error) {
+      gapSettingsError.hidden = false;
+      gapSettingsError.textContent = error instanceof Error ? error.message : 'Ungültige Schwellenwerte.';
+      gapSettingInputs.forEach((input) => input.setAttribute('aria-invalid', 'true'));
+    }
   }
 
   function markerIcon(kind) {
@@ -500,24 +541,27 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   }
 
   function renderRoutebook() {
-    const routebook = buildRoutebook(currentPois, selectedPoiIds, currentRouteDistanceMeters);
+    const routebook = buildRoutebook(currentPois, selectedPoiIds, currentRouteDistanceMeters, gapSettings);
     const hasRoute = currentRouteDistanceMeters > 0;
     const hasStops = routebook.stops.length > 0;
+    const thresholds = routebook.gapThresholds || buildGapThresholds(gapSettings);
     routebookSummary.textContent = hasRoute
-      ? `Planning gaps from the current selection: longest section without a selected stop is ${formatDistance(routebook.longestGapM)}. Sections over ${ROUTEBOOK_GAP_WARNING_M / 1000} km are highlighted (fixed V0.2 test value).`
+      ? `Longest section without a selected stop: ${formatDistance(routebook.longestGapM)}. Info > ${formatThresholdKm(thresholds.infoM)}, Warning > ${formatThresholdKm(thresholds.warningM)}, Critical > ${formatThresholdKm(thresholds.criticalM)}.`
       : 'Load a route to create a routebook.';
     routebookEmpty.hidden = hasStops || !hasRoute;
     routebookList.innerHTML = '';
 
     routebook.entries.forEach((entry) => {
       const item = document.createElement('li');
-      item.className = `routebook-item ${entry.kind} ${entry.isLongGap ? 'long-gap' : ''}`;
+      const severityClass = entry.gapSeverity ? `gap-${entry.gapSeverity}` : '';
+      item.className = `routebook-item ${entry.kind} ${severityClass} ${entry.isLongGap ? 'long-gap' : ''}`;
       if (entry.kind === 'stop') {
         const passText = entry.poi.passCount > 1 ? ` · Vorbeifahrt ${entry.poi.passIndex}/${entry.poi.passCount}` : '';
+        const severityText = entry.gapSeverity ? ` · ${entry.gapSeverity.toUpperCase()}` : '';
         item.innerHTML = `
           <button type="button" class="routebook-focus">
             <span class="routebook-main"><strong>${escapeHtml(entry.poi.name)}</strong><small>${escapeHtml(entry.poi.category.label)} · ${formatRouteKm(entry.routeMeters)}${passText}</small></span>
-            <span class="routebook-gap">${formatDistance(entry.distanceFromPreviousM)} from previous</span>
+            <span class="routebook-gap">${formatDistance(entry.distanceFromPreviousM)} from previous${severityText}</span>
           </button>
           <button type="button" class="routebook-remove" aria-label="Remove ${escapeHtml(entry.poi.name)} from routebook">Remove</button>
         `;
@@ -528,9 +572,10 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
         item.querySelector('.routebook-remove').addEventListener('click', () => toggleSelection(poiKey(entry.poi)));
       } else {
         const isStart = entry.kind === 'start';
+        const severityText = entry.gapSeverity ? ` · ${entry.gapSeverity.toUpperCase()}` : '';
         item.innerHTML = `
           <span class="routebook-main"><strong>${entry.name}</strong><small>${formatRouteKm(entry.routeMeters)}</small></span>
-          ${isStart ? '' : `<span class="routebook-gap">${formatDistance(entry.distanceFromPreviousM)} from previous</span>`}
+          ${isStart ? '' : `<span class="routebook-gap">${formatDistance(entry.distanceFromPreviousM)} from previous${severityText}</span>`}
         `;
       }
       routebookList.appendChild(item);
@@ -592,16 +637,22 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
     poiMarkers.set(poiId, marker);
   }
 
+  function gapSeverityColor(severity) {
+    if (severity === 'critical') return '#a33d32';
+    if (severity === 'warning') return '#ad6717';
+    return '#d6902f';
+  }
+
   function renderWarningLayer() {
     warningLayer.clearLayers();
     if (!currentParsedRoute) return;
     if (activeTab !== 'routebook' && (poiSearchRunning || (poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total)))) return;
     const { warnings } = activeTab === 'routebook'
-      ? buildRoutebookWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters)
-      : buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters);
+      ? buildRoutebookWarnings(currentPois, selectedPoiIds, currentRouteDistanceMeters, gapSettings)
+      : buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters, gapSettings);
     warnings.forEach((warning) => {
       const geometry = extractRouteGeometryRange(currentParsedRoute, warning.startMeters, warning.endMeters);
-      geometry.forEach((line) => L.polyline(line, { color: '#a33d32', weight: 8, opacity: 0.78, interactive: false }).addTo(warningLayer));
+      geometry.forEach((line) => L.polyline(line, { color: gapSeverityColor(warning.severity), weight: 8, opacity: 0.78, interactive: false }).addTo(warningLayer));
     });
   }
 
@@ -630,16 +681,18 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
       renderWarningLayer();
       return;
     }
-    const { warnings, longestGapM, foundCount } = buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters);
+    const { warnings, longestGapM, foundCount, gapThresholds } = buildFoundPoiWarnings(currentPois, currentRouteDistanceMeters, gapSettings);
+    const counts = { info: 0, warning: 0, critical: 0 };
+    warnings.forEach((warning) => { counts[warning.severity] += 1; });
     poiWarningSummary.hidden = false;
     poiWarningSummary.className = 'warning-summary';
-    poiWarningSummary.textContent = `${warnings.length} gefundene Versorgungslücke${warnings.length === 1 ? '' : 'n'}, längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} POIs innerhalb des Korridors. Schwelle: ${ROUTEBOOK_GAP_WARNING_M / 1000} km (fester V0.2-Testwert). Near misses zählen nicht.`;
+    poiWarningSummary.textContent = `${warnings.length} Versorgungslücke${warnings.length === 1 ? '' : 'n'} ab Info-Schwelle; ${counts.info} Info, ${counts.warning} Warning, ${counts.critical} Critical. Längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} POIs im Korridor. Schwellen: ${formatThresholdKm(gapThresholds.infoM)} / ${formatThresholdKm(gapThresholds.warningM)} / ${formatThresholdKm(gapThresholds.criticalM)}. Near misses zählen nicht.`;
     poiWarningList.innerHTML = '';
     poiWarningList.hidden = warnings.length === 0;
     warnings.forEach((warning) => {
       const item = document.createElement('li');
-      item.className = 'warning-item';
-      item.innerHTML = `<span><strong>${escapeHtml(warning.from)} → ${escapeHtml(warning.to)}</strong><small>${formatDistance(warning.lengthM)} ohne gefundenen POI</small></span><button class="warning-focus" type="button">Focus</button>`;
+      item.className = `warning-item severity-${warning.severity}`;
+      item.innerHTML = `<span><strong>${warning.severity.toUpperCase()} · ${escapeHtml(warning.from)} → ${escapeHtml(warning.to)}</strong><small>${formatDistance(warning.lengthM)} ohne gefundenen POI</small></span><button class="warning-focus" type="button">Focus</button>`;
       item.querySelector('button').addEventListener('click', () => {
         const geometry = extractRouteGeometryRange(currentParsedRoute, warning.startMeters, warning.endMeters);
         const points = geometry.flat();
@@ -879,6 +932,7 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   fileInput.addEventListener('change', (event) => loadFile(event.target.files?.[0]));
   replaceRoute.addEventListener('click', () => fileInput.click());
   reloadPois.addEventListener('click', () => currentParsedRoute && loadPois(currentParsedRoute, true, failedPoiSections.length > 0));
+  gapSettingInputs.forEach((input) => input.addEventListener('input', applyGapSettingsFromInputs));
   document.querySelectorAll('.category-row').forEach((button) => {
     button.addEventListener('click', () => {
       const categoryId = button.dataset.category;
@@ -922,4 +976,6 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !routeCard.hidden) clearRoute();
   });
+
+  renderGapSettingsPreview();
 })();
