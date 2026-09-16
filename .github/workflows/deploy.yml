@@ -52,8 +52,11 @@ jobs:
               throw "Required GitHub Actions secret '$name' is missing."
             }
           }
-          if ($env:BONKPROOF_SFTP_PORT -and -not [int]::TryParse($env:BONKPROOF_SFTP_PORT, [ref]$null)) {
-            throw 'BONKPROOF_SFTP_PORT must be an integer when configured.'
+          if (-not [string]::IsNullOrWhiteSpace($env:BONKPROOF_SFTP_PORT)) {
+            $parsedPort = 0
+            if (-not [int]::TryParse($env:BONKPROOF_SFTP_PORT, [ref]$parsedPort)) {
+              throw 'BONKPROOF_SFTP_PORT must be an integer when configured.'
+            }
           }
 
       - name: Deploy to production
