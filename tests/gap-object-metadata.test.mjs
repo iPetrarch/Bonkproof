@@ -49,7 +49,8 @@ test('gap type can vary without changing the route-gap calculation', () => {
   const pois = [
     { osmType: 'node', osmId: 7, name: 'Water', routeKm: 25, offRouteM: 10, status: 'match' },
   ];
-  const [gap] = buildFoundPoiWarnings(pois, 60000, settings, 'water').warnings;
+  const gap = buildFoundPoiWarnings(pois, 60000, settings, 'water').warnings.find((warning) => warning.toKind === 'route-end');
+  assert.ok(gap);
   assert.equal(gap.gapType, 'water');
   assert.equal(gap.fromKind, 'poi');
   assert.equal(gap.fromPoiId, 'node/7');
