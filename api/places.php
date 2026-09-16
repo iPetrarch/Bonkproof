@@ -35,7 +35,7 @@ if (($east - $west) > 1.0 || ($north - $south) > 1.0) fail(400, 'Bounding box is
 
 $dbPath = getenv('BONKPROOF_OVERTURE_DB');
 if (!is_string($dbPath) || trim($dbPath) === '') {
-    $dbPath = dirname(__DIR__, 3) . '/bonkproof-data/overture-places.sqlite';
+    $dbPath = dirname(__DIR__) . '/data/overture-places.sqlite';
 }
 if (!is_file($dbPath)) fail(503, 'Local Overture database is not available yet.');
 if (!extension_loaded('pdo_sqlite')) fail(500, 'PDO SQLite is not available on this server.');
