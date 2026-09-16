@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildFoundPoiWarnings, buildRoutebook, poiKey } from '../routebook.js';
+import { physicalPoiKey } from '../poi-projection.js';
 import { routeOrderCases } from './fixtures/route-order-cases.mjs';
 
 function selectAll(pois) {
@@ -17,13 +18,27 @@ for (const [name, fixture] of Object.entries(routeOrderCases)) {
   });
 }
 
-test('repeatedPhysicalPoi: downstream routebook can represent multiple pass-bys of one physical POI', () => {
+test('repeatedPhysicalPoi: pass-bys share physical identity but have separate selection keys', () => {
   const fixture = routeOrderCases.repeatedPhysicalPoi;
-  const routebook = buildRoutebook(fixture.pois, selectAll(fixture.pois), fixture.routeDistanceM);
+  const [firstPass, secondPass] = fixture.pois;
 
-  assert.equal(new Set(fixture.pois.map(poiKey)).size, 1, 'both pass-bys intentionally share one physical OSM identity');
-  assert.equal(routebook.stops.length, 2, 'routebook must not collapse distinct resolved pass-bys');
-  assert.deepEqual(routebook.stops.map((poi) => poi.routeKm), fixture.expectedRouteKm);
+  assert.equal(physicalPoiKey(firstPass), physicalPoiKey(secondPass));
+  assert.notEqual(poiKey(firstPass), poiKey(secondPass));
+  assert.notEqual(firstPass.routeKm, secondPass.routeKm);
+  assert.deepEqual([firstPass.lat, firstPass.lon], [secondPass.lat, secondPass.lon]);
+});
+
+test('repeatedPhysicalPoi: each pass-by can be selected independently', () => {
+  const fixture = routeOrderCases.repeatedPhysicalPoi;
+  const [firstPass, secondPass] = fixture.pois;
+
+  const firstOnly = buildRoutebook(fixture.pois, new Set([poiKey(firstPass)]), fixture.routeDistanceM);
+  const secondOnly = buildRoutebook(fixture.pois, new Set([poiKey(secondPass)]), fixture.routeDistanceM);
+  const both = buildRoutebook(fixture.pois, selectAll(fixture.pois), fixture.routeDistanceM);
+
+  assert.deepEqual(firstOnly.stops.map((poi) => poi.routeKm), [31]);
+  assert.deepEqual(secondOnly.stops.map((poi) => poi.routeKm), [94]);
+  assert.deepEqual(both.stops.map((poi) => poi.routeKm), fixture.expectedRouteKm);
 });
 
 test('repeatedPhysicalPoi: supply gaps use both resolved pass-by positions', () => {
@@ -38,13 +53,4 @@ test('repeatedPhysicalPoi: supply gaps use both resolved pass-by positions', () 
       ['Village shop', 'Village shop', 63000],
     ],
   );
-});
-
-test('fixtures keep physical identity separate from route position', () => {
-  const fixture = routeOrderCases.repeatedPhysicalPoi;
-  const [firstPass, secondPass] = fixture.pois;
-
-  assert.equal(poiKey(firstPass), poiKey(secondPass));
-  assert.notEqual(firstPass.routeKm, secondPass.routeKm);
-  assert.deepEqual([firstPass.lat, firstPass.lon], [secondPass.lat, secondPass.lon]);
 });
