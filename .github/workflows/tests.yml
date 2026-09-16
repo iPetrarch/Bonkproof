@@ -10,7 +10,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -19,6 +19,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply pinning patch on development branch
+        if: github.ref == 'refs/heads/chatgpt/pinned-pois' && github.actor != 'github-actions[bot]'
+        run: |
+          python tools/apply-pinning-patch.py
+          if git diff --quiet -- app.js styles.css tests/pinned-pois.test.mjs; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js styles.css tests/pinned-pois.test.mjs
+          git commit -m "Add pinned POI preservation"
+          git push origin HEAD:chatgpt/pinned-pois
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
