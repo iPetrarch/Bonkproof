@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
@@ -26,58 +26,118 @@ jobs:
       - name: Run regression tests
         run: npm test
 
-      - name: Install WinSCP
-        shell: pwsh
-        run: choco install winscp -y --no-progress
-
-      - name: Validate WinSCP installation
-        shell: pwsh
+      - name: Install SFTP password helper
         run: |
-          $assembly = 'C:\Program Files (x86)\WinSCP\netstandard2.0\WinSCPnet.dll'
-          $exe = 'C:\Program Files (x86)\WinSCP\WinSCP.exe'
-          if (-not (Test-Path -LiteralPath $assembly)) {
-            throw "WinSCP .NET Standard assembly not found at '$assembly'."
-          }
-          if (-not (Test-Path -LiteralPath $exe)) {
-            throw "WinSCP executable not found at '$exe'."
-          }
+          sudo apt-get update
+          sudo apt-get install -y sshpass
 
       - name: Validate deployment secrets
-        shell: pwsh
+        shell: bash
         env:
           BONKPROOF_SFTP_PASSWORD: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
           BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
         run: |
-          foreach ($name in @('BONKPROOF_SFTP_PASSWORD', 'BONKPROOF_SFTP_HOSTKEY')) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "Required GitHub Actions secret '$name' is missing."
+          set -euo pipefail
+          for name in BONKPROOF_SFTP_PASSWORD BONKPROOF_SFTP_HOSTKEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required GitHub Actions secret '$name' is missing." >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify SFTP host key
+        shell: bash
+        env:
+          BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
+        run: |
+          set -euo pipefail
+
+          host='ssh.petrarch.de'
+          port='22'
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          known_hosts="$HOME/.ssh/known_hosts"
+
+          : > "$known_hosts"
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "$port" "$host" > "$known_hosts" 2>/dev/null && [[ -s "$known_hosts" ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ ! -s "$known_hosts" ]]; then
+            echo 'Could not retrieve the SFTP server host key.' >&2
+            exit 1
+          fi
+          chmod 600 "$known_hosts"
+
+          expected="$BONKPROOF_SFTP_HOSTKEY"
+          sha_lines="$(ssh-keygen -lf "$known_hosts" -E sha256)"
+          md5_lines="$(ssh-keygen -lf "$known_hosts" -E md5)"
+
+          if [[ "$expected" =~ (SHA256:[A-Za-z0-9+/=]+) ]]; then
+            fingerprint="${BASH_REMATCH[1]}"
+            grep -Fq "$fingerprint" <<< "$sha_lines" || {
+              echo 'SFTP host-key fingerprint does not match the configured secret.' >&2
+              exit 1
             }
-          }
+          elif [[ "$expected" =~ ([0-9A-Fa-f]{2}:){15}[0-9A-Fa-f]{2} ]]; then
+            fingerprint="${BASH_REMATCH[0],,}"
+            actual_md5="$(sed -n 's/.*MD5:\([^ ]*\).*/\1/p' <<< "$md5_lines" | tr 'A-F' 'a-f')"
+            grep -Fxq "$fingerprint" <<< "$actual_md5" || {
+              echo 'SFTP host-key fingerprint does not match the configured secret.' >&2
+              exit 1
+            }
+          else
+            fingerprint="$(awk '{print $NF}' <<< "$expected")"
+            actual_sha="$(sed -n 's/.*SHA256:\([^ ]*\).*/\1/p' <<< "$sha_lines")"
+            fingerprint="${fingerprint#SHA256:}"
+            grep -Fxq "$fingerprint" <<< "$actual_sha" || {
+              echo 'Unsupported or non-matching SFTP host-key fingerprint format.' >&2
+              exit 1
+            }
+          fi
+
+          echo 'SFTP host key verified.'
 
       - name: Deploy to production
-        shell: pwsh
+        shell: bash
         env:
-          BONKPROOF_SFTP_PASSWORD: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
-          BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
+          SSHPASS: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
         run: |
-          @'
-          @{
-              HostName = 'ssh.petrarch.de'
-              PortNumber = 22
-              UserName = 'petrarch.de'
-              RemotePath = '/customers/e/4/0/petrarch.de/httpd.www/bonkproof'
-              SshHostKeyFingerprint = $env:BONKPROOF_SFTP_HOSTKEY
-              PasswordEnvironmentVariable = 'BONKPROOF_SFTP_PASSWORD'
-              WinScpAssemblyPath = 'C:\Program Files (x86)\WinSCP\netstandard2.0\WinSCPnet.dll'
-              WinScpExecutablePath = 'C:\Program Files (x86)\WinSCP\WinSCP.exe'
-          }
-          '@ | Set-Content -LiteralPath '.\deploy.home.local.ps1' -Encoding UTF8
+          set -euo pipefail
 
-          .\deploy.ps1 -Profile home -Force
+          host='ssh.petrarch.de'
+          port='22'
+          user='petrarch.de'
+          remote='/customers/e/4/0/petrarch.de/httpd.www/bonkproof'
 
-      - name: Remove temporary deployment files
-        if: always()
-        shell: pwsh
-        run: |
-          Remove-Item '.\deploy.home.local.ps1' -Force -ErrorAction SilentlyContinue
-          Remove-Item '.\.deploy-state.home.json' -Force -ErrorAction SilentlyContinue
+          cat > "$RUNNER_TEMP/bonkproof-sftp.batch" <<EOF
+          -mkdir $remote
+          cd $remote
+          put index.html
+          put styles.css
+          put app.js
+          put routebook.js
+          put poi-search.js
+          put poi-projection.js
+          put poi-clustering.js
+          put poi-config.js
+          put resupply-profile.js
+          -mkdir config
+          put config/poi-categories.json config/poi-categories.json
+          put config/resupply-profile.json config/resupply-profile.json
+          EOF
+
+          sshpass -e sftp \
+            -P "$port" \
+            -b "$RUNNER_TEMP/bonkproof-sftp.batch" \
+            -oBatchMode=no \
+            -oPreferredAuthentications=password \
+            -oPubkeyAuthentication=no \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$user@$host"
+
+          echo 'Bonkproof deployment complete.'
