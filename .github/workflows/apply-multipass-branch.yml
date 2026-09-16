@@ -1,0 +1,225 @@
+name: Apply multi-pass branch patch
+
+on:
+  push:
+    branches:
+      - chatgpt/multi-pass-pois
+    paths:
+      - .github/workflows/apply-multipass-branch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/multi-pass-pois
+      - name: Apply scoped multi-pass integration
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          app_path = Path('app.js')
+          app = app_path.read_text(encoding='utf-8')
+          app = app.replace(
+              "import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, splitPoiQuerySection } from './poi-search.js';",
+              "import { buildPoiQuerySections, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQuerySection } from './poi-search.js';"
+          )
+          app = app.replace(
+              "import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';",
+              "import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';\nimport { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';"
+          )
+
+          projection_block = re.compile(r"  function buildRouteGeometry\(parsed\) \{.*?\n  function escapeHtml\(value\) \{", re.S)
+          replacement = '''  function normalizePoiPassBys(element, categories, geometry, config) {
+            const coordinate = elementCoordinate(element);
+            const category = matchingCategory(element, categories);
+            if (!coordinate || !category) return [];
+
+            const graceM = getGraceMeters(category, config);
+            const hardLimitM = category.defaultRadiusM;
+            const softLimitM = hardLimitM + graceM;
+            const physicalId = physicalPoiKey({ osmType: element.type, osmId: element.id });
+
+            return projectPoiPassBys(coordinate, geometry, softLimitM).map((projection) => ({
+              osmType: element.type,
+              osmId: element.id,
+              physicalPoiId: physicalId,
+              passId: projection.passId,
+              passIndex: projection.passIndex,
+              passCount: projection.passCount,
+              lat: coordinate.lat,
+              lon: coordinate.lon,
+              tags: element.tags || {},
+              category,
+              routeKm: projection.routeKm,
+              offRouteM: projection.distanceM,
+              status: projection.distanceM <= hardLimitM ? 'match' : 'near-miss',
+              name: element.tags?.name || element.tags?.brand || category.label,
+            }));
+          }
+
+          function escapeHtml(value) {'''
+          app, count = projection_block.subn(replacement, app, count=1)
+          if count != 1:
+              raise SystemExit('Could not replace legacy single-projection block')
+
+          focus_marker = '''  function focusPoi(poi) {
+            map.setView([poi.lat, poi.lon], Math.max(map.getZoom(), 15));
+            poiMarkers.get(poiKey(poi))?.openPopup();
+          }
+'''
+          focus_replacement = '''  function physicalPassesFor(poi) {
+            const physicalId = poi.physicalPoiId || physicalPoiKey(poi);
+            return currentPois
+              .filter((candidate) => (candidate.physicalPoiId || physicalPoiKey(candidate)) === physicalId)
+              .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+          }
+
+          function nextPassBy(poi) {
+            const passes = physicalPassesFor(poi);
+            if (passes.length < 2) return null;
+            const currentIndex = passes.findIndex((candidate) => poiKey(candidate) === poiKey(poi));
+            return passes[(currentIndex + 1) % passes.length] || null;
+          }
+
+          function focusPoi(poi) {
+            map.setView([poi.lat, poi.lon], Math.max(map.getZoom(), 15));
+            poiMarkers.get(poiKey(poi))?.openPopup();
+          }
+
+          function jumpToPassBy(poi) {
+            const target = nextPassBy(poi);
+            if (!target) return;
+            activeCategoryIds.add(target.category.id);
+            const visiblePois = currentPois
+              .filter((candidate) => activeCategoryIds.has(candidate.category.id))
+              .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+            const targetIndex = visiblePois.findIndex((candidate) => poiKey(candidate) === poiKey(target));
+            if (targetIndex >= 0) poiPage = Math.floor(targetIndex / POI_LIST_PAGE_SIZE) + 1;
+            renderPois(currentPois, currentCategories);
+            const targetId = poiKey(target);
+            const targetItem = [...poiList.querySelectorAll('.poi-list-item')]
+              .find((item) => item.dataset.poiId === targetId);
+            targetItem?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            focusPoi(target);
+          }
+'''
+          if focus_marker not in app:
+              raise SystemExit('Could not locate focusPoi block')
+          app = app.replace(focus_marker, focus_replacement, 1)
+
+          marker_block = re.compile(r"  function renderPoiMarker\(poi, latLng = \[poi\.lat, poi\.lon\]\) \{.*?\n  function renderWarningLayer\(\) \{", re.S)
+          marker_replacement = '''  function renderPoiMarker(poi, latLng = [poi.lat, poi.lon]) {
+            const poiId = poiKey(poi);
+            const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
+            const selected = selectedPoiIds.has(poiId);
+            const nextPass = nextPassBy(poi);
+            const passText = poi.passCount > 1 ? `<br>Vorbeifahrt ${poi.passIndex} von ${poi.passCount}` : '';
+            const jumpButton = nextPass
+              ? `<button type="button" class="popup-selection popup-pass-jump" data-pass-jump="${escapeHtml(poiId)}">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>`
+              : '';
+            const popup = `
+              <strong>${escapeHtml(poi.name)}</strong><br>
+              ${escapeHtml(poi.category.label)} · km ${poi.routeKm.toFixed(1)}${passText}<br>
+              ${Math.round(poi.offRouteM)} m off route · ${statusText}<br>
+              <button type="button" class="popup-selection" data-poi-id="${escapeHtml(poiId)}">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>
+              ${jumpButton}
+            `;
+            const marker = L.marker(latLng, { icon: poiMarkerIcon(poi), title: poi.name, keyboard: true }).bindPopup(popup).addTo(poiLayer);
+            marker.on('popupopen', () => {
+              const selectionButton = map.getContainer().querySelector(`[data-poi-id="${poiId}"]`);
+              selectionButton?.addEventListener('click', () => toggleSelection(poiId), { once: true });
+              const passButton = map.getContainer().querySelector(`[data-pass-jump="${poiId}"]`);
+              passButton?.addEventListener('click', () => jumpToPassBy(poi), { once: true });
+            });
+            poiMarkers.set(poiId, marker);
+          }
+
+          function renderWarningLayer() {'''
+          app, count = marker_block.subn(marker_replacement, app, count=1)
+          if count != 1:
+              raise SystemExit('Could not replace marker rendering block')
+
+          list_block = re.compile(r"    page\.items\.forEach\(\(poi\) => \{.*?\n    \}\);\n    poiList\.hidden", re.S)
+          list_replacement = '''    page.items.forEach((poi) => {
+            const poiId = poiKey(poi);
+            const nextPass = nextPassBy(poi);
+            const passText = poi.passCount > 1 ? ` · Vorbeifahrt ${poi.passIndex}/${poi.passCount}` : '';
+            const item = document.createElement('li');
+            item.dataset.poiId = poiId;
+            item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;
+            item.innerHTML = `
+              <div class="poi-list-primary">
+                <button type="button" class="poi-list-button">
+                  <span class="poi-list-main"><strong>${escapeHtml(poi.name)}</strong><small>${escapeHtml(poi.category.label)} · ${Math.round(poi.offRouteM)} m off route${passText}</small></span>
+                  <span class="route-km">km ${poi.routeKm.toFixed(1)}</span>
+                </button>
+                ${nextPass ? `<button type="button" class="poi-pass-jump">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>` : ''}
+              </div>
+              <button type="button" class="poi-selection">${selectedPoiIds.has(poiId) ? 'Remove' : 'Add'}</button>
+            `;
+            item.querySelector('.poi-list-button').addEventListener('click', () => focusPoi(poi));
+            item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiId));
+            item.querySelector('.poi-pass-jump')?.addEventListener('click', () => jumpToPassBy(poi));
+            poiList.appendChild(item);
+          });
+          poiList.hidden'''
+          app, count = list_block.subn(list_replacement, app, count=1)
+          if count != 1:
+              raise SystemExit('Could not replace POI list rendering block')
+
+          app = app.replace(
+              'const geometry = buildRouteGeometry(parsed);',
+              'const geometry = buildRouteGeometry(parsed);',
+              1,
+          )
+          candidate_old = '''          candidates.forEach((element) => {
+            const poi = normalizePoi(element, categories, geometry, config);
+            if (!poi) return;
+            const key = `${poi.osmType}/${poi.osmId}`;
+            const existing = deduped.get(key);
+            if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
+          });'''
+          candidate_new = '''          candidates.forEach((element) => {
+            normalizePoiPassBys(element, categories, geometry, config).forEach((poi) => {
+              const key = poiKey(poi);
+              const existing = deduped.get(key);
+              if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
+            });
+          });'''
+          if candidate_old not in app:
+              raise SystemExit('Could not locate POI candidate normalization block')
+          app = app.replace(candidate_old, candidate_new, 1)
+          app_path.write_text(app, encoding='utf-8')
+
+          deploy_path = Path('deploy.ps1')
+          deploy = deploy_path.read_text(encoding='utf-8')
+          if "    'poi-projection.js'," not in deploy:
+              deploy = deploy.replace("    'poi-search.js',\n", "    'poi-search.js',\n    'poi-projection.js',\n", 1)
+          deploy_path.write_text(deploy, encoding='utf-8')
+
+          styles_path = Path('styles.css')
+          styles = styles_path.read_text(encoding='utf-8')
+          style_anchor = '.poi-selection { margin: 0.42rem; padding: 0.35rem 0.55rem; }\n'
+          style_addition = '''.poi-list-primary { min-width: 0; background: #f7f0e3; }
+          .poi-list-primary .poi-list-button { background: transparent; }
+          .poi-pass-jump { margin: 0 0.8rem 0.55rem; padding: 0; border: 0; background: transparent; color: var(--route-dark); cursor: pointer; font-size: 0.76rem; font-weight: 800; text-decoration: underline; text-underline-offset: 0.14rem; }
+          .popup-pass-jump { margin-left: 0.35rem; background: transparent; }
+          '''
+          if '.poi-pass-jump {' not in styles:
+              styles = styles.replace(style_anchor, style_anchor + style_addition, 1)
+          styles_path.write_text(styles, encoding='utf-8')
+      - name: Commit scoped integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js deploy.ps1 styles.css
+          git diff --cached --check
+          git commit -m "Integrate repeated POI pass-bys in the UI"
+          git push origin HEAD:chatgpt/multi-pass-pois
