@@ -1,4 +1,4 @@
 {
   "schemaVersion": 1,
-  "reliableCategoryIds": ["supermarket", "fuel"]
+  "reliableCategoryIds": ["supermarket", "fuel", "drinking_water"]
 }
