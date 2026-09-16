@@ -25,7 +25,7 @@ The first useful milestone is deliberately narrow:
 1. Load a local GPX file in the browser.
 2. Parse track or route points without uploading the file.
 3. Show the route on a map.
-4. Query useful OpenStreetMap POIs near the route.
+4. Query useful POIs near the route.
 5. Sort POIs by their position along the route.
 6. Show route kilometre and approximate detour distance.
 
@@ -34,7 +34,7 @@ Everything else comes later.
 ## Project principles
 
 - **Privacy-friendly by default.** Basic GPX processing should happen locally where practical.
-- **Open data first.** OpenStreetMap is the preferred POI source.
+- **Open data first.** OpenStreetMap-derived POI data remains preferred where practical.
 - **Useful before clever.** A small reliable routebook beats a feature-heavy planner.
 - **Self-hostable.** Bonkproof should remain easy to run without a complex cloud stack.
 - **Long-distance friendly.** Resupply gaps and practical stops matter more than generic map search.
@@ -43,17 +43,23 @@ Everything else comes later.
 
 Bonkproof parses the selected GPX file locally in the browser. The GPX file itself is not uploaded to a Bonkproof backend.
 
-The current web app does make direct browser requests to external services:
+For supported POI categories, the production app prefers **Geoapify Places** through Bonkproof's same-origin PHP proxy. The browser sends only a route-derived bounding box and the requested POI categories to that proxy; the proxy then calls Geoapify with the server-side API key. This means the original GPX file is still not uploaded, but route-location information is sent to the Bonkproof web server and onward to Geoapify. Because Geoapify is called by the proxy, Geoapify normally sees the Bonkproof server request rather than a direct browser request.
 
-- **OpenStreetMap data / Overpass API:** POI searches are sent to the public Overpass endpoint at `overpass-api.de`. The request contains bounding boxes derived from the loaded route, so route-location information is necessarily disclosed to that external service even though the original GPX file is not uploaded.
+If the Geoapify proxy is unavailable, not configured, or the requested POI category is not mapped safely, Bonkproof falls back to the public OpenStreetMap Overpass API. In that fallback case, the browser sends route-derived bounding boxes directly to `overpass-api.de`.
+
+The web app also uses these external services:
+
+- **OpenStreetMap data / Overpass API:** fallback POI searches may be sent to the public Overpass endpoint at `overpass-api.de`.
 - **OpenStreetMap raster tiles:** the map loads tiles from OpenStreetMap infrastructure. As with normal web requests, the tile service can receive the user's IP address and standard HTTP request metadata.
 - **Leaflet via unpkg:** Leaflet JavaScript and CSS are currently loaded from `unpkg.com`, so opening the app also causes requests to that CDN.
 
+The Geoapify API key is never committed to the repository or delivered to browser JavaScript. Production deployment writes it into an ignored PHP configuration file on the server from a GitHub Actions repository secret. The proxy only accepts a fixed allowlist of POI categories and bounded search rectangles.
+
 OpenStreetMap data is available under the Open Data Commons Open Database License (ODbL). Public use requires OpenStreetMap attribution and a clear indication of the ODbL. The map currently shows `© OpenStreetMap contributors` through Leaflet attribution. See https://www.openstreetmap.org/copyright and the OpenStreetMap Foundation attribution guidelines for the applicable requirements.
 
-The public OpenStreetMap tile servers and public Overpass instances are shared community infrastructure, not guaranteed application backends. Bonkproof should keep requests bounded and conservative, handle rate limits and temporary failures, and avoid bulk tile downloading or prefetching.
+The public OpenStreetMap tile servers and public Overpass instances are shared community infrastructure, not guaranteed application backends. Bonkproof should keep fallback requests bounded and conservative, handle rate limits and temporary failures, and avoid bulk tile downloading or prefetching.
 
-Before a public production deployment, the site's privacy information should describe these external requests and their purpose. Hosting or replacing the external dependencies may change that disclosure requirement.
+Before public production use, the site's privacy information should describe the Geoapify proxy flow, possible Overpass fallback, OpenStreetMap tile requests and unpkg dependency. Hosting or replacing these external dependencies may change that disclosure requirement.
 
 ## Status
 
