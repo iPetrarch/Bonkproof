@@ -30,6 +30,18 @@ jobs:
         shell: pwsh
         run: choco install winscp -y --no-progress
 
+      - name: Validate WinSCP installation
+        shell: pwsh
+        run: |
+          $assembly = 'C:\Program Files (x86)\WinSCP\netstandard2.0\WinSCPnet.dll'
+          $exe = 'C:\Program Files (x86)\WinSCP\WinSCP.exe'
+          if (-not (Test-Path -LiteralPath $assembly)) {
+            throw "WinSCP .NET Standard assembly not found at '$assembly'."
+          }
+          if (-not (Test-Path -LiteralPath $exe)) {
+            throw "WinSCP executable not found at '$exe'."
+          }
+
       - name: Validate deployment secrets
         shell: pwsh
         env:
@@ -56,6 +68,8 @@ jobs:
               RemotePath = '/customers/e/4/0/petrarch.de/httpd.www/bonkproof'
               SshHostKeyFingerprint = $env:BONKPROOF_SFTP_HOSTKEY
               PasswordEnvironmentVariable = 'BONKPROOF_SFTP_PASSWORD'
+              WinScpAssemblyPath = 'C:\Program Files (x86)\WinSCP\netstandard2.0\WinSCPnet.dll'
+              WinScpExecutablePath = 'C:\Program Files (x86)\WinSCP\WinSCP.exe'
           }
           '@ | Set-Content -LiteralPath '.\deploy.home.local.ps1' -Encoding UTF8
 
