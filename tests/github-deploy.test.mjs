@@ -19,10 +19,10 @@ test('GitHub deployment runs regression tests before invoking the existing deplo
 
 test('GitHub deployment keeps only password and host key in Actions secrets', () => {
   for (const name of ['BONKPROOF_SFTP_PASSWORD', 'BONKPROOF_SFTP_HOSTKEY']) {
-    assert.match(workflow, new RegExp(`secrets\\.${name}`));
+    assert.match(workflow, new RegExp(`secrets\\.${name}\\b`));
   }
   for (const name of ['BONKPROOF_SFTP_HOST', 'BONKPROOF_SFTP_USER', 'BONKPROOF_SFTP_REMOTE_PATH']) {
-    assert.doesNotMatch(workflow, new RegExp(`secrets\\.${name}`));
+    assert.doesNotMatch(workflow, new RegExp(`secrets\\.${name}\\b`));
   }
   assert.match(workflow, /PasswordEnvironmentVariable = 'BONKPROOF_SFTP_PASSWORD'/);
 });
