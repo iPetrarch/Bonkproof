@@ -1,7 +1,8 @@
 export const ROUTEBOOK_GAP_WARNING_M = 30000;
 
 export function poiKey(poi) {
-  return `${poi.osmType}/${poi.osmId}`;
+  const physicalKey = `${poi.osmType}/${poi.osmId}`;
+  return poi.passId ? `${physicalKey}#${poi.passId}` : physicalKey;
 }
 
 export function togglePoiSelection(selectedPoiIds, poiId) {
@@ -110,14 +111,14 @@ export function extractRouteGeometryRange(parsedRoute, startDistanceM, endDistan
       const a = points[index];
       const b = points[index + 1];
       const length = routeDistanceMeters(a, b);
-    const nextCumulative = cumulative + length;
+      const nextCumulative = cumulative + length;
       if (nextCumulative >= startDistanceM && cumulative <= endDistanceM && length > 0) {
         const from = Math.max(0, (startDistanceM - cumulative) / length);
         const to = Math.min(1, (endDistanceM - cumulative) / length);
-      const fromPoint = interpolate([a.lat, a.lon], [b.lat, b.lon], from);
-      const toPoint = interpolate([a.lat, a.lon], [b.lat, b.lon], to);
-      if (!result.length || result[result.length - 1][0] !== fromPoint[0] || result[result.length - 1][1] !== fromPoint[1]) result.push(fromPoint);
-      result.push(toPoint);
+        const fromPoint = interpolate([a.lat, a.lon], [b.lat, b.lon], from);
+        const toPoint = interpolate([a.lat, a.lon], [b.lat, b.lon], to);
+        if (!result.length || result[result.length - 1][0] !== fromPoint[0] || result[result.length - 1][1] !== fromPoint[1]) result.push(fromPoint);
+        result.push(toPoint);
       }
       cumulative = nextCumulative;
       if (cumulative > endDistanceM) break;
