@@ -368,3 +368,17 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 .warning-summary { margin: 1rem 0 .75rem; }
 .warning-summary.is-pending { color: var(--ink-soft); }
 .warning-summary.is-incomplete { background: color-mix(in srgb, var(--ochre) 14%, var(--panel)); border-left: 3px solid var(--ochre); color: var(--ink); padding: .7rem .85rem; }
+
+
+.poi-pin, .popup-pin {
+  font: inherit;
+}
+
+.poi-marker.pinned {
+  outline: 3px solid rgba(23, 73, 92, 0.45);
+  outline-offset: 2px;
+}
+
+.poi-marker.pinned-outside {
+  opacity: 0.72;
+}

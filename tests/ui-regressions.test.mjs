@@ -121,7 +121,8 @@ test('POI section status keeps partial retries incomplete and preserves successf
   assert.match(app, /const incomplete = poiSectionStatus\.started && \(poiSectionStatus\.failed\.size > 0 \|\| poiSectionStatus\.completed < poiSectionStatus\.total\)/);
   assert.match(app, /poiSectionStatus\.completed \+= 1/);
   assert.match(app, /poiSectionStatus\.failed\.add\(workload\.id\)/);
-  assert.match(app, /const deduped = new Map\(\(retryFailedOnly \? currentPois : \[\]\)/);
+  assert.match(app, /const pinnedFallbacks = \[\.\.\.pinnedPoiSnapshots\.entries\(\)\]/);
+  assert.match(app, /const deduped = new Map\(\[\.\.\.\(retryFailedOnly \? currentPois : \[\]\)\.map/);
   assert.match(app, /loadPois\(currentParsedRoute, true, failedPoiSections\.length > 0\)/);
 });
 

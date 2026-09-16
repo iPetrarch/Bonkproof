@@ -73,6 +73,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
   let currentPois = [];
   let currentCategories = [];
   let selectedPoiIds = new Set();
+  let pinnedPoiIds = new Set();
+  let pinnedPoiSnapshots = new Map();
   let currentRouteDistanceMeters = 0;
   let currentParsedRoute = null;
   let poiSearchRunning = false;
@@ -322,10 +324,12 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
 
   function poiMarkerIcon(poi) {
     const label = categorySymbol(poi.category);
-    const selectedClass = selectedPoiIds.has(poiKey(poi)) ? 'selected' : '';
+    const poiId = poiKey(poi);
+    const selectedClass = selectedPoiIds.has(poiId) ? 'selected' : '';
+    const pinnedClass = pinnedPoiIds.has(poiId) ? 'pinned' : '';
     return L.divIcon({
       className: '',
-      html: `<div class="poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.category.id} ${selectedClass}" aria-hidden="true">${escapeHtml(label)}</div>`,
+      html: `<div class="poi-marker ${poi.status === 'near-miss' ? 'near-miss' : ''} ${poi.status === 'pinned' ? 'pinned-outside' : ''} ${poi.category.id} ${selectedClass} ${pinnedClass}" aria-hidden="true">${escapeHtml(label)}</div>`,
       iconSize: [30, 30],
       iconAnchor: [15, 15],
       popupAnchor: [0, -14],
@@ -340,6 +344,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     poiMarkers.clear();
     currentPois = [];
     selectedPoiIds = new Set();
+    pinnedPoiIds = new Set();
+    pinnedPoiSnapshots = new Map();
     currentRouteDistanceMeters = parsed.distanceMeters;
     currentParsedRoute = parsed;
     currentPoiSections = buildPoiQuerySections(parsed);
@@ -558,6 +564,21 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     renderWarnings();
   }
 
+  function togglePin(poi) {
+    const poiId = poiKey(poi);
+    if (pinnedPoiIds.has(poiId)) {
+      pinnedPoiIds.delete(poiId);
+      pinnedPoiSnapshots.delete(poiId);
+      if (poi.status === 'pinned') currentPois = currentPois.filter((candidate) => poiKey(candidate) !== poiId);
+    } else {
+      pinnedPoiIds.add(poiId);
+      pinnedPoiSnapshots.set(poiId, { ...poi });
+    }
+    renderPois(currentPois, currentCategories);
+    renderRoutebook();
+    renderWarnings();
+  }
+
   function renderRoutebook() {
     const routebook = buildRoutebook(currentPois, selectedPoiIds, currentRouteDistanceMeters, gapSettings);
     const hasRoute = currentRouteDistanceMeters > 0;
@@ -631,24 +652,29 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
 
   function renderPoiMarker(poi, latLng = [poi.lat, poi.lon]) {
     const poiId = poiKey(poi);
-    const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
+    const statusText = poi.status === 'near-miss' ? 'Near miss' : (poi.status === 'pinned' ? 'Behalten aus vorheriger Suche' : 'Inside corridor');
     const selected = selectedPoiIds.has(poiId);
+    const pinned = pinnedPoiIds.has(poiId);
     const nextPass = nextPassBy(poi);
     const passText = poi.passCount > 1 ? `<br>Vorbeifahrt ${poi.passIndex} von ${poi.passCount}` : '';
     const jumpButton = nextPass
       ? `<button type="button" class="popup-selection popup-pass-jump" data-pass-jump="${escapeHtml(poiId)}">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>`
       : '';
+    const pinButton = `<button type="button" class="popup-selection popup-pin" data-pin-id="${escapeHtml(poiId)}">${pinned ? 'Pin lösen' : 'POI behalten'}</button>`;
     const popup = `
       <strong>${escapeHtml(poi.name)}</strong><br>
       ${escapeHtml(poi.category.label)} · km ${poi.routeKm.toFixed(1)}${passText}<br>
       ${Math.round(poi.offRouteM)} m off route · ${statusText}<br>
       <button type="button" class="popup-selection" data-poi-id="${escapeHtml(poiId)}">${selected ? 'Remove from routebook' : 'Add to routebook'}</button>
+          ${pinButton}
       ${jumpButton}
     `;
     const marker = L.marker(latLng, { icon: poiMarkerIcon(poi), title: poi.name, keyboard: true }).bindPopup(popup).addTo(poiLayer);
     marker.on('popupopen', () => {
       const selectionButton = map.getContainer().querySelector(`[data-poi-id="${poiId}"]`);
       selectionButton?.addEventListener('click', () => toggleSelection(poiId), { once: true });
+      const pinButton = map.getContainer().querySelector(`[data-pin-id="${poiId}"]`);
+      pinButton?.addEventListener('click', () => togglePin(poi), { once: true });
       const passButton = map.getContainer().querySelector(`[data-pass-jump="${poiId}"]`);
       passButton?.addEventListener('click', () => jumpToPassBy(poi), { once: true });
     });
@@ -662,7 +688,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
   }
 
   function activeFoundResupplyPois() {
-    const visible = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id));
+    const visible = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id) && poi.status !== 'pinned');
     return filterReliableResupplyPois(visible, resupplyProfile);
   }
 
@@ -751,8 +777,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
       currentPois.filter((poi) => selectedPoiIds.has(poiKey(poi))).forEach((poi) => renderPoiMarker(poi));
       return;
     }
-    const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id));
-    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && selectedPoiIds.has(poiKey(poi))));
+    const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id) || pinnedPoiIds.has(poiKey(poi)));
+    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && !pinnedPoiIds.has(poiKey(poi)) && selectedPoiIds.has(poiKey(poi))));
     const selected = mapPois.filter((poi) => selectedPoiIds.has(poiKey(poi)));
     selected.forEach((poi) => renderPoiMarker(poi));
     const clusterable = mapPois.filter((poi) => !selectedPoiIds.has(poiKey(poi)));
@@ -777,7 +803,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     currentPois = pois;
     currentCategories = categories;
     const visiblePois = pois
-      .filter((poi) => activeCategoryIds.has(poi.category.id))
+      .filter((poi) => activeCategoryIds.has(poi.category.id) || pinnedPoiIds.has(poiKey(poi)))
       .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
     const page = paginatePois(visiblePois, poiPage);
     poiPage = page.page;
@@ -806,9 +832,10 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
       const poiId = poiKey(poi);
       const nextPass = nextPassBy(poi);
       const passText = poi.passCount > 1 ? ` · Vorbeifahrt ${poi.passIndex}/${poi.passCount}` : '';
+      const pinned = pinnedPoiIds.has(poiId);
       const item = document.createElement('li');
       item.dataset.poiId = poiId;
-      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;
+      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${pinned ? 'pinned' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;
       item.innerHTML = `
         <div class="poi-list-primary">
           <button type="button" class="poi-list-button">
@@ -817,9 +844,11 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
           </button>
           ${nextPass ? `<button type="button" class="poi-pass-jump">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>` : ''}
         </div>
+        <button type="button" class="poi-pin">${pinned ? 'Pin lösen' : 'Behalten'}</button>
         <button type="button" class="poi-selection">${selectedPoiIds.has(poiId) ? 'Remove' : 'Add'}</button>
       `;
       item.querySelector('.poi-list-button').addEventListener('click', () => focusPoi(poi));
+      item.querySelector('.poi-pin').addEventListener('click', () => togglePin(poi));
       item.querySelector('.poi-selection').addEventListener('click', () => toggleSelection(poiId));
       item.querySelector('.poi-pass-jump')?.addEventListener('click', () => jumpToPassBy(poi));
       poiList.appendChild(item);
@@ -830,7 +859,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     poiPageNumber.textContent = `Seite ${page.page} von ${page.totalPages}`;
     poiPrevious.disabled = page.page === 1;
     poiNext.disabled = page.page === page.totalPages;
-    if (activeCategoryIds.size === 0) {
+    if (activeCategoryIds.size === 0 && visiblePois.length === 0) {
       poiEmpty.textContent = 'Keine POI-Kategorie ausgewählt.';
       poiEmpty.hidden = false;
     } else if (visiblePois.length === 0) {
@@ -851,12 +880,18 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
   async function loadPois(parsed, preserveSelection = false, retryFailedOnly = false) {
     if (poiSearchRunning) return;
     const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
+    const previousPins = preserveSelection ? new Set(pinnedPoiIds) : new Set();
+    const previousPinnedSnapshots = preserveSelection
+      ? new Map(currentPois.filter((poi) => previousPins.has(poiKey(poi))).map((poi) => [poiKey(poi), { ...poi }]))
+      : new Map();
     setPoiSearchRunning(true);
     poiAbortController?.abort();
     poiAbortController = new AbortController();
     const { signal } = poiAbortController;
     if (!retryFailedOnly) clearPoiUi();
     selectedPoiIds = previousSelection;
+    pinnedPoiIds = previousPins;
+    pinnedPoiSnapshots = previousPinnedSnapshots;
     setPoiStatus('Reading POI configuration…');
 
     try {
@@ -868,12 +903,14 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
       if (categories.length === 0) {
         failedPoiSections = [];
         poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: true };
-        renderPois([], config.categories);
+        const pinnedFallbacks = [...pinnedPoiSnapshots.values()].map((poi) => ({ ...poi, status: 'pinned' }));
+        renderPois(pinnedFallbacks, config.categories);
         return;
       }
 
       const geometry = buildRouteGeometry(parsed);
-      const deduped = new Map((retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]));
+      const pinnedFallbacks = [...pinnedPoiSnapshots.entries()].map(([id, poi]) => [id, { ...poi, status: 'pinned' }]);
+      const deduped = new Map([...(retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);
       const workloads = retryFailedOnly
         ? [...failedPoiSections]
         : createPoiQueryWorkloads(currentPoiSections, categories);
@@ -904,7 +941,10 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
             normalizePoiPassBys(element, workloadCategories, geometry, config).forEach((poi) => {
               const key = poiKey(poi);
               const existing = deduped.get(key);
-              if (!existing || poi.offRouteM < existing.offRouteM) deduped.set(key, poi);
+              if (!existing || existing.status === 'pinned' || poi.offRouteM < existing.offRouteM) {
+                deduped.set(key, poi);
+                if (pinnedPoiIds.has(key)) pinnedPoiSnapshots.set(key, { ...poi });
+              }
             });
           });
           poiSectionStatus.completed += 1;
@@ -928,6 +968,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
 
       const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
       selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
+      pinnedPoiIds = new Set([...pinnedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
       failedPoiSections = failedWorkloads;
       renderPois(pois, config.categories);
       setPoiStatus(
