@@ -652,7 +652,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
 
   function renderPoiMarker(poi, latLng = [poi.lat, poi.lon]) {
     const poiId = poiKey(poi);
-    const statusText = poi.status === 'near-miss' ? 'Near miss' : 'Inside corridor';
+    const statusText = poi.status === 'near-miss' ? 'Near miss' : (poi.status === 'pinned' ? 'Behalten aus vorheriger Suche' : 'Inside corridor');
     const selected = selectedPoiIds.has(poiId);
     const pinned = pinnedPoiIds.has(poiId);
     const nextPass = nextPassBy(poi);
@@ -778,7 +778,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
       return;
     }
     const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id) || pinnedPoiIds.has(poiKey(poi)));
-    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && selectedPoiIds.has(poiKey(poi))));
+    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && !pinnedPoiIds.has(poiKey(poi)) && selectedPoiIds.has(poiKey(poi))));
     const selected = mapPois.filter((poi) => selectedPoiIds.has(poiKey(poi)));
     selected.forEach((poi) => renderPoiMarker(poi));
     const clusterable = mapPois.filter((poi) => !selectedPoiIds.has(poiKey(poi)));
@@ -835,7 +835,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
       const pinned = pinnedPoiIds.has(poiId);
       const item = document.createElement('li');
       item.dataset.poiId = poiId;
-      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;
+      item.className = `poi-list-item ${poi.status === 'near-miss' ? 'near-miss' : ''} ${pinned ? 'pinned' : ''} ${selectedPoiIds.has(poiId) ? 'selected' : ''}`;
       item.innerHTML = `
         <div class="poi-list-primary">
           <button type="button" class="poi-list-button">
@@ -859,7 +859,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     poiPageNumber.textContent = `Seite ${page.page} von ${page.totalPages}`;
     poiPrevious.disabled = page.page === 1;
     poiNext.disabled = page.page === page.totalPages;
-    if (activeCategoryIds.size === 0) {
+    if (activeCategoryIds.size === 0 && visiblePois.length === 0) {
       poiEmpty.textContent = 'Keine POI-Kategorie ausgewählt.';
       poiEmpty.hidden = false;
     } else if (visiblePois.length === 0) {
@@ -903,7 +903,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
       if (categories.length === 0) {
         failedPoiSections = [];
         poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: true };
-        renderPois([], config.categories);
+        const pinnedFallbacks = [...pinnedPoiSnapshots.values()].map((poi) => ({ ...poi, status: 'pinned' }));
+        renderPois(pinnedFallbacks, config.categories);
         return;
       }
 

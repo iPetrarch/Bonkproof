@@ -28,3 +28,17 @@ test('pinned POIs remain visible but do not automatically close found-resupply g
 test('new routes reset pins', () => {
   assert.match(app, /pinnedPoiIds = new Set\(\);\s*pinnedPoiSnapshots = new Map\(\);\s*currentRouteDistanceMeters = parsed\.distanceMeters/);
 });
+
+
+test('pins survive when every category is disabled', () => {
+  assert.match(app, /if \(categories\.length === 0\)[\s\S]*pinnedFallbacks[\s\S]*renderPois\(pinnedFallbacks, config\.categories\)/);
+});
+
+test('pinned and selected POIs are not duplicated on the map', () => {
+  assert.match(app, /!pinnedPoiIds\.has\(poiKey\(poi\)\) && selectedPoiIds\.has\(poiKey\(poi\)\)/);
+});
+
+test('pinned fallbacks are labelled distinctly from current corridor matches', () => {
+  assert.match(app, /poi\.status === 'pinned' \? 'Behalten aus vorheriger Suche'/);
+  assert.match(app, /\$\{pinned \? 'pinned' : ''\}/);
+});
