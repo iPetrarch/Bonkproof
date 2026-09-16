@@ -243,7 +243,7 @@ test('reload is disabled before a route, preserves IDs and prevents parallel sea
   assert.match(app, /if \(poiSearchRunning\) return;/);
   assert.match(app, /loadPois\(currentParsedRoute, true, failedPoiSections\.length > 0\)/);
   assert.match(app, /selectedPoiIds = new Set\(\[\.\.\.selectedPoiIds\].*poiKey\(poi\)/s);
-  assert.match(app, /waitForPoiBackoff\(2500/);
+  assert.match(app, /waitForPoiBackoff\(1000/);
   assert.match(app, /failedPoiSections\.length > 0/);
   assert.match(app, /if \(section\.index !== sections\.at\(-1\)\?\.index\)/);
   assert.match(app, /Overpass begrenzt derzeit die Anfragen/);
