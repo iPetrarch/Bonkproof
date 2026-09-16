@@ -1,0 +1,40 @@
+name: Apply incremental POI optimization
+
+on:
+  push:
+    branches:
+      - chatgpt/incremental-poi-categories
+    paths:
+      - scripts/apply-incremental-poi-optimization.py
+      - .github/workflows/apply-incremental-poi-optimization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/incremental-poi-categories
+      - name: Apply focused source changes
+        run: python scripts/apply-incremental-poi-optimization.py
+      - name: Run regression tests
+        run: node --test
+      - name: Verify no unexpected files
+        run: |
+          git status --short
+          git diff --check
+      - name: Commit generated source changes
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.js tests/overture-provider.test.mjs
+          git commit -m 'Optimize incremental local POI loading'
+          git push origin HEAD:chatgpt/incremental-poi-categories
