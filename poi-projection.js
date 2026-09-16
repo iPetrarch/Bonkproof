@@ -70,14 +70,15 @@ function projectPointToSegment(point, segment) {
   };
 }
 
-function splitContiguousCandidates(candidates) {
+function splitContiguousCandidates(candidates, encounterMergeM) {
   const groups = [];
   candidates.forEach((candidate) => {
     const current = groups.at(-1);
     const previous = current?.at(-1);
     const contiguous = previous
       && candidate.sourceSegmentIndex === previous.sourceSegmentIndex
-      && candidate.geometryIndex === previous.geometryIndex + 1;
+      && candidate.geometryIndex === previous.geometryIndex + 1
+      && Math.abs(candidate.routeMeters - previous.routeMeters) <= encounterMergeM;
     if (!contiguous) groups.push([candidate]);
     else current.push(candidate);
   });
@@ -96,7 +97,8 @@ export function projectPoiPassBys(point, geometry, maximumDistanceM) {
     .filter((candidate) => candidate.distanceM <= maximumDistanceM)
     .sort((a, b) => a.geometryIndex - b.geometryIndex);
 
-  const passBys = splitContiguousCandidates(candidates)
+  const encounterMergeM = Math.max(100, maximumDistanceM * 2);
+  const passBys = splitContiguousCandidates(candidates, encounterMergeM)
     .map(bestCandidate)
     .filter(Boolean)
     .sort((a, b) => a.routeMeters - b.routeMeters)
