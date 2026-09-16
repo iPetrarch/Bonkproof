@@ -30,52 +30,30 @@ jobs:
         shell: pwsh
         run: choco install winscp -y --no-progress
 
-      - name: Validate deployment configuration
+      - name: Validate deployment secrets
         shell: pwsh
         env:
-          BONKPROOF_SFTP_HOST: ${{ secrets.BONKPROOF_SFTP_HOST }}
-          BONKPROOF_SFTP_USER: ${{ secrets.BONKPROOF_SFTP_USER }}
           BONKPROOF_SFTP_PASSWORD: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
           BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
-          BONKPROOF_SFTP_REMOTE_PATH: ${{ secrets.BONKPROOF_SFTP_REMOTE_PATH }}
-          BONKPROOF_SFTP_PORT: ${{ vars.BONKPROOF_SFTP_PORT }}
         run: |
-          $required = @(
-            'BONKPROOF_SFTP_HOST',
-            'BONKPROOF_SFTP_USER',
-            'BONKPROOF_SFTP_PASSWORD',
-            'BONKPROOF_SFTP_HOSTKEY',
-            'BONKPROOF_SFTP_REMOTE_PATH'
-          )
-          foreach ($name in $required) {
+          foreach ($name in @('BONKPROOF_SFTP_PASSWORD', 'BONKPROOF_SFTP_HOSTKEY')) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               throw "Required GitHub Actions secret '$name' is missing."
-            }
-          }
-          if (-not [string]::IsNullOrWhiteSpace($env:BONKPROOF_SFTP_PORT)) {
-            $parsedPort = 0
-            if (-not [int]::TryParse($env:BONKPROOF_SFTP_PORT, [ref]$parsedPort)) {
-              throw 'BONKPROOF_SFTP_PORT must be an integer when configured.'
             }
           }
 
       - name: Deploy to production
         shell: pwsh
         env:
-          BONKPROOF_SFTP_HOST: ${{ secrets.BONKPROOF_SFTP_HOST }}
-          BONKPROOF_SFTP_USER: ${{ secrets.BONKPROOF_SFTP_USER }}
           BONKPROOF_SFTP_PASSWORD: ${{ secrets.BONKPROOF_SFTP_PASSWORD }}
           BONKPROOF_SFTP_HOSTKEY: ${{ secrets.BONKPROOF_SFTP_HOSTKEY }}
-          BONKPROOF_SFTP_REMOTE_PATH: ${{ secrets.BONKPROOF_SFTP_REMOTE_PATH }}
-          BONKPROOF_SFTP_PORT: ${{ vars.BONKPROOF_SFTP_PORT }}
         run: |
           @'
-          $port = if ([string]::IsNullOrWhiteSpace($env:BONKPROOF_SFTP_PORT)) { 22 } else { [int]$env:BONKPROOF_SFTP_PORT }
           @{
-              HostName = $env:BONKPROOF_SFTP_HOST
-              PortNumber = $port
-              UserName = $env:BONKPROOF_SFTP_USER
-              RemotePath = $env:BONKPROOF_SFTP_REMOTE_PATH
+              HostName = 'ssh.petrarch.de'
+              PortNumber = 22
+              UserName = 'petrarch.de'
+              RemotePath = '/customers/e/4/0/petrarch.de/httpd.www/bonkproof'
               SshHostKeyFingerprint = $env:BONKPROOF_SFTP_HOSTKEY
               PasswordEnvironmentVariable = 'BONKPROOF_SFTP_PASSWORD'
           }
