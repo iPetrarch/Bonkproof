@@ -24,7 +24,7 @@ $publishFiles = @(
     'poi-projection.js',
     'poi-clustering.js',
     'poi-config.js',
-    'poi-provider-geoapify.js',
+    'poi-provider-overture.js',
     'resupply-profile.js',
     'api/places.php',
     'config/poi-categories.json',
