@@ -17,17 +17,19 @@ test('GitHub deployment runs regression tests before invoking the existing deplo
   assert.ok(deployIndex > testIndex);
 });
 
-test('GitHub deployment requires SFTP secrets without embedding credentials', () => {
-  for (const name of [
-    'BONKPROOF_SFTP_HOST',
-    'BONKPROOF_SFTP_USER',
-    'BONKPROOF_SFTP_PASSWORD',
-    'BONKPROOF_SFTP_HOSTKEY',
-    'BONKPROOF_SFTP_REMOTE_PATH',
-  ]) {
-    assert.match(workflow, new RegExp(`secrets\\.${name}`));
-  }
+test('GitHub deployment embeds only non-secret connection settings', () => {
+  assert.match(workflow, /HostName = 'ssh\.petrarch\.de'/);
+  assert.match(workflow, /UserName = 'petrarch\.de'/);
+  assert.match(workflow, /PortNumber = 22/);
+  assert.match(workflow, /RemotePath = '\/customers\/e\/4\/0\/petrarch\.de\/httpd\.www\/bonkproof'/);
+});
+
+test('GitHub deployment keeps password and host key in repository secrets', () => {
+  assert.match(workflow, /secrets\.BONKPROOF_SFTP_PASSWORD/);
+  assert.match(workflow, /secrets\.BONKPROOF_SFTP_HOSTKEY/);
   assert.match(workflow, /PasswordEnvironmentVariable = 'BONKPROOF_SFTP_PASSWORD'/);
+  assert.match(workflow, /SshHostKeyFingerprint = \$env:BONKPROOF_SFTP_HOSTKEY/);
+  assert.doesNotMatch(workflow, /here be dragons/i);
 });
 
 test('GitHub deployment keeps the production upload single-flight', () => {
