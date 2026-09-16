@@ -19,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: chatgpt/incremental-poi-categories
+          persist-credentials: false
       - name: Apply focused source changes
         run: python scripts/apply-incremental-poi-optimization.py
       - name: Run regression tests
@@ -28,6 +29,8 @@ jobs:
           git status --short
           git diff --check
       - name: Commit generated source changes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if git diff --quiet; then
             echo 'No source changes to commit.'
@@ -37,4 +40,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app.js tests/overture-provider.test.mjs
           git commit -m 'Optimize incremental local POI loading'
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:chatgpt/incremental-poi-categories
