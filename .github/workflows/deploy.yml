@@ -113,7 +113,14 @@ jobs:
           user='petrarch.de'
           remote='/customers/e/4/0/petrarch.de/httpd.www/bonkproof'
 
-          cat > "$RUNNER_TEMP/bonkproof-sftp.batch" <<EOF
+          sshpass -e sftp \
+            -P "$port" \
+            -oBatchMode=no \
+            -oPreferredAuthentications=password,keyboard-interactive \
+            -oPubkeyAuthentication=no \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$user@$host" <<EOF
           -mkdir $remote
           cd $remote
           put index.html
@@ -128,16 +135,7 @@ jobs:
           -mkdir config
           put config/poi-categories.json config/poi-categories.json
           put config/resupply-profile.json config/resupply-profile.json
+          bye
           EOF
-
-          sshpass -e sftp \
-            -P "$port" \
-            -b "$RUNNER_TEMP/bonkproof-sftp.batch" \
-            -oBatchMode=no \
-            -oPreferredAuthentications=password \
-            -oPubkeyAuthentication=no \
-            -oStrictHostKeyChecking=yes \
-            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$user@$host"
 
           echo 'Bonkproof deployment complete.'
