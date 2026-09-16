@@ -32,6 +32,11 @@ test('GitHub deployment keeps password and host key in repository secrets', () =
   assert.doesNotMatch(workflow, /here be dragons/i);
 });
 
+test('GitHub deployment uses the WinSCP .NET Standard assembly for PowerShell Core', () => {
+  assert.match(workflow, /WinScpAssemblyPath = 'C:\\\\Program Files \(x86\)\\\\WinSCP\\\\netstandard2\.0\\\\WinSCPnet\.dll'/);
+  assert.match(workflow, /WinScpExecutablePath = 'C:\\\\Program Files \(x86\)\\\\WinSCP\\\\WinSCP\.exe'/);
+});
+
 test('GitHub deployment keeps the production upload single-flight', () => {
   assert.match(workflow, /group: bonkproof-production-deploy/);
   assert.match(workflow, /cancel-in-progress: false/);
