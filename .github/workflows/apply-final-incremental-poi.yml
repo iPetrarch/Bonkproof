@@ -1,0 +1,69 @@
+name: Apply final incremental POI optimization
+
+on:
+  push:
+    branches:
+      - chatgpt/incremental-poi-loading-final
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Apply scoped optimization
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/iPetrarch/Bonkproof/chatgpt/finish-incremental-poi-categories/scripts/apply-incremental-poi-optimization.py \
+            -o /tmp/apply-incremental-poi-optimization.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/apply-incremental-poi-optimization.py')
+          text = path.read_text(encoding='utf-8')
+          old = '        let paceAfterWorkload = false;\\n'
+          new = '        let paceAfterWorkload = true;\\n'
+          if old not in text:
+              raise SystemExit('Expected conservative pacing patch point not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python /tmp/apply-incremental-poi-optimization.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/incremental-poi-loading.test.mjs')
+          text = path.read_text(encoding='utf-8')
+          old = "  assert.match(app, /paceAfterWorkload = candidates\\.poiProvider !== 'overture-local'/);\n"
+          new = "  assert.match(app, /let paceAfterWorkload = true;/);\n" + old
+          if old not in text:
+              raise SystemExit('Expected pacing regression-test patch point not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Validate and test
+        run: |
+          set -euo pipefail
+          node --check app.js
+          node --check poi-provider-overture.js
+          npm test
+          git diff --check
+      - name: Commit productive changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js tests/incremental-poi-loading.test.mjs docs/overture-local.md
+          git diff --cached --quiet && { echo 'No productive changes generated'; exit 1; }
+          git commit -m "Optimize incremental POI category loading"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
