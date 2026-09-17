@@ -6,6 +6,7 @@ on:
       - chatgpt/finish-incremental-poi-categories
     paths:
       - scripts/apply-incremental-poi-optimization.py
+      - scripts/update-incremental-poi-regression-tests.py
       - .github/workflows/apply-incremental-poi-optimization.yml
 
 permissions:
@@ -22,7 +23,9 @@ jobs:
           persist-credentials: false
 
       - name: Apply focused source changes
-        run: python scripts/apply-incremental-poi-optimization.py
+        run: |
+          python scripts/apply-incremental-poi-optimization.py
+          python scripts/update-incremental-poi-regression-tests.py
 
       - name: Run regression tests
         shell: bash
@@ -43,7 +46,7 @@ jobs:
           git status --short
           git diff --check
           test -f tests/incremental-poi-loading.test.mjs
-          git diff -- app.js docs/overture-local.md tests/incremental-poi-loading.test.mjs
+          git diff -- app.js docs/overture-local.md tests/dynamic-poi-ui.test.mjs tests/ui-regressions.test.mjs tests/incremental-poi-loading.test.mjs
 
       - name: Commit productive changes only
         env:
@@ -51,10 +54,8 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app.js docs/overture-local.md tests/incremental-poi-loading.test.mjs
+          git add app.js docs/overture-local.md tests/dynamic-poi-ui.test.mjs tests/ui-regressions.test.mjs tests/incremental-poi-loading.test.mjs
           git diff --cached --check
           git commit -m 'Optimize incremental local POI loading'
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:chatgpt/finish-incremental-poi-categories
-
-# Retriggered after validating the helper against the current main branch.
