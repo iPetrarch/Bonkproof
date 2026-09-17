@@ -34,21 +34,14 @@ jobs:
           test -f tests/incremental-poi-loading.test.mjs
           git diff -- app.js docs/overture-local.md tests/incremental-poi-loading.test.mjs
 
-      - name: Remove temporary helper files
-        run: |
-          rm scripts/apply-incremental-poi-optimization.py
-          rm .github/workflows/apply-incremental-poi-optimization.yml
-
-      - name: Commit focused changes
+      - name: Commit productive changes only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add app.js docs/overture-local.md tests/incremental-poi-loading.test.mjs
           git diff --cached --check
           git commit -m 'Optimize incremental local POI loading'
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:chatgpt/finish-incremental-poi-categories
-
-# retrigger after helper whitespace fix
