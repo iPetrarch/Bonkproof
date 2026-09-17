@@ -25,7 +25,18 @@ jobs:
         run: python scripts/apply-incremental-poi-optimization.py
 
       - name: Run regression tests
-        run: node --test
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test 2>&1 | tee incremental-poi-test-output.txt
+
+      - name: Upload regression test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: incremental-poi-test-output
+          path: incremental-poi-test-output.txt
+          if-no-files-found: warn
 
       - name: Verify generated diff
         run: |
