@@ -12,6 +12,13 @@ Bonkproof is designed to use a locally hosted SQLite database built from Overtur
 
 No Geoapify key or other live POI API key is required.
 
+
+## Browser-side incremental loading
+
+The browser keeps successfully loaded POI categories for the current route and radius in memory. Enabling a new category queries only that category; disabling and re-enabling an already loaded category at the same radius is local-only. Changing a category radius invalidates and reloads only that category. Gap-warning distance settings never trigger a POI request and only recalculate the existing route analysis.
+
+The historical one-second inter-package delay is skipped only when a package is confirmed as served by the same-origin local Overture API. If a request falls back to the public Overpass service, the existing conservative pacing and retry behavior remains in place.
+
 ## Current Overture source
 
 The importer expects an explicit Overture release name, for example:

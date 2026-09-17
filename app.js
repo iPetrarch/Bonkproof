@@ -83,6 +83,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
   let poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: false };
   let poiPage = 1;
   let activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
+  let loadedCategoryRadii = new Map();
   let activeTab = 'pois';
   let gapSettings = { ...DEFAULT_GAP_SETTINGS };
   const poiMarkers = new Map();
@@ -160,6 +161,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     poiPage = 1;
     activeCategoryIds = poiConfig ? defaultEnabledCategoryIds(poiConfig) : new Set(INITIAL_CATEGORY_IDS);
     categoryRadiusOverrides = poiConfig ? defaultCategoryRadii(poiConfig) : new Map();
+    loadedCategoryRadii = new Map();
     if (poiConfig) renderCategoryControls(poiConfig);
   }
 
@@ -453,6 +455,16 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     return [south - latPad, west - lonPad, north + latPad, east + lonPad];
   }
 
+  function categoryRadiusMeters(categoryId) {
+    const configured = poiConfig?.categories.find((category) => category.id === categoryId);
+    return Number(categoryRadiusOverrides.get(categoryId) ?? configured?.defaultRadiusM ?? 0);
+  }
+
+  function categoryIsLoaded(categoryId) {
+    const radiusM = categoryRadiusMeters(categoryId);
+    return Number.isFinite(radiusM) && loadedCategoryRadii.get(categoryId) === radiusM;
+  }
+
   async function fetchOsmCandidates(categories, section, config, signal) {
     const maxEnvelope = Math.max(...categories.map((category) => category.radiusM + getGraceMeters(category, config)));
     const bbox = getRouteBounds({ segments: [section.points] }, maxEnvelope);
@@ -474,7 +486,12 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     }
 
     const payload = await response.json();
-    return Array.isArray(payload.elements) ? payload.elements : [];
+    const elements = Array.isArray(payload.elements) ? payload.elements : [];
+    Object.defineProperty(elements, 'poiProvider', {
+      value: response.headers.get('X-Bonkproof-Poi-Provider') || 'overpass',
+      enumerable: false,
+    });
+    return elements;
   }
 
   function elementCoordinate(element) {
@@ -877,7 +894,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     );
   }
 
-  async function loadPois(parsed, preserveSelection = false, retryFailedOnly = false) {
+  async function loadPois(parsed, preserveSelection = false, retryFailedOnly = false, requestedCategoryIds = null, replaceCategoryIds = null) {
     if (poiSearchRunning) return;
     const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
     const previousPins = preserveSelection ? new Set(pinnedPoiIds) : new Set();
@@ -888,7 +905,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     poiAbortController?.abort();
     poiAbortController = new AbortController();
     const { signal } = poiAbortController;
-    if (!retryFailedOnly) clearPoiUi();
+    const incremental = Array.isArray(requestedCategoryIds) && requestedCategoryIds.length > 0;
+    if (!retryFailedOnly && !incremental) clearPoiUi();
     selectedPoiIds = previousSelection;
     pinnedPoiIds = previousPins;
     pinnedPoiSnapshots = previousPinnedSnapshots;
@@ -898,7 +916,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
       const [config] = await Promise.all([getPoiConfig(), getResupplyProfile()]);
       if (signal.aborted) return;
 
-      const categories = buildActiveCategories(config, activeCategoryIds, categoryRadiusOverrides);
+      const queryCategoryIds = incremental ? new Set(requestedCategoryIds) : activeCategoryIds;
+      const categories = buildActiveCategories(config, queryCategoryIds, categoryRadiusOverrides);
       poiCategories.hidden = false;
       if (categories.length === 0) {
         failedPoiSections = [];
@@ -910,7 +929,12 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
 
       const geometry = buildRouteGeometry(parsed);
       const pinnedFallbacks = [...pinnedPoiSnapshots.entries()].map(([id, poi]) => [id, { ...poi, status: 'pinned' }]);
-      const deduped = new Map([...(retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);
+      const replacedIds = new Set(replaceCategoryIds || []);
+      const previousUnrelatedFailures = incremental
+        ? failedPoiSections.filter((workload) => !workload.categories.some((category) => queryCategoryIds.has(category.id)))
+        : [];
+      const deduped = new Map([...(retryFailedOnly || incremental ? currentPois : []).map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);
+      const freshQueriedPois = new Map();
       const workloads = retryFailedOnly
         ? [...failedPoiSections]
         : createPoiQueryWorkloads(currentPoiSections, categories);
@@ -921,6 +945,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
         const workload = workloads[workloadPosition];
         const section = workload.section;
         const workloadCategories = workload.categories;
+        let paceAfterWorkload = true;
         if (signal.aborted) return;
         setPoiStatus(`POIs werden gesucht: Suchpaket ${poiSectionStatus.completed + 1} von ${poiSectionStatus.total}`);
         try {
@@ -937,11 +962,14 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
             },
           );
           if (!candidates) return;
+          paceAfterWorkload = candidates.poiProvider !== 'overture-local';
           candidates.forEach((element) => {
             normalizePoiPassBys(element, workloadCategories, geometry, config).forEach((poi) => {
               const key = poiKey(poi);
+              const freshExisting = freshQueriedPois.get(key);
+              if (!freshExisting || poi.offRouteM < freshExisting.offRouteM) freshQueriedPois.set(key, poi);
               const existing = deduped.get(key);
-              if (!existing || existing.status === 'pinned' || poi.offRouteM < existing.offRouteM) {
+              if (incremental || !existing || existing.status === 'pinned' || poi.offRouteM < existing.offRouteM) {
                 deduped.set(key, poi);
                 if (pinnedPoiIds.has(key)) pinnedPoiSnapshots.set(key, { ...poi });
               }
@@ -963,17 +991,30 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
           poiSectionStatus.completed += 1;
           console.error(error);
         }
-        if (workloadPosition < workloads.length - 1) await waitForPoiBackoff(1000, section, signal);
+        if (paceAfterWorkload && workloadPosition < workloads.length - 1) await waitForPoiBackoff(1000, section, signal);
       }
 
-      const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+      let finalPois = deduped;
+      if (incremental && replacedIds.size > 0 && failedWorkloads.length === 0) {
+        finalPois = new Map(currentPois
+          .filter((poi) => !replacedIds.has(poi.category.id))
+          .map((poi) => [poiKey(poi), poi]));
+        pinnedFallbacks.forEach(([id, poi]) => finalPois.set(id, poi));
+        freshQueriedPois.forEach((poi, id) => finalPois.set(id, poi));
+      }
+      const pois = Array.from(finalPois.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
       selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
       pinnedPoiIds = new Set([...pinnedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
-      failedPoiSections = failedWorkloads;
+      failedPoiSections = incremental ? [...previousUnrelatedFailures, ...failedWorkloads] : failedWorkloads;
+      if (failedWorkloads.length === 0) {
+        categories.forEach((category) => loadedCategoryRadii.set(category.id, category.radiusM));
+      } else {
+        categories.forEach((category) => loadedCategoryRadii.delete(category.id));
+      }
       renderPois(pois, config.categories);
       setPoiStatus(
-        failedWorkloads.length > 0
-          ? `POI-Suche teilweise erfolgreich: ${failedWorkloads.length} Suchpaket${failedWorkloads.length === 1 ? '' : 'e'} endgültig fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Paketen verfügbar.`
+        failedPoiSections.length > 0
+          ? `POI-Suche teilweise erfolgreich: ${failedPoiSections.length} Suchpaket${failedPoiSections.length === 1 ? '' : 'e'} endgültig fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Paketen verfügbar.`
           : `${pois.length} POIs vollständig geladen (${poiSectionStatus.completed} Suchpakete verarbeitet).`,
       );
     } catch (error) {
@@ -1017,8 +1058,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     else activeCategoryIds.delete(categoryId);
     poiPage = 1;
     if (poiConfig) renderCategoryControls(poiConfig);
-    if (enabling && currentParsedRoute) {
-      loadPois(currentParsedRoute, true, false);
+    if (enabling && currentParsedRoute && !categoryIsLoaded(categoryId)) {
+      loadPois(currentParsedRoute, true, false, [categoryId], [categoryId]);
     } else {
       renderPois(currentPois, currentCategories);
       renderWarnings();
@@ -1030,13 +1071,18 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     if (!input) return;
     const categoryId = input.dataset.categoryRadius;
     const fallback = categoryRadiusOverrides.get(categoryId) || poiConfig?.categories.find((category) => category.id === categoryId)?.defaultRadiusM || 250;
+    const previousRadiusM = categoryRadiusMeters(categoryId);
     const radiusM = Number(input.value);
     if (!Number.isFinite(radiusM) || radiusM <= 0) {
       input.value = String(fallback);
       return;
     }
     categoryRadiusOverrides.set(categoryId, radiusM);
-    if (activeCategoryIds.has(categoryId) && currentParsedRoute) loadPois(currentParsedRoute, true, false);
+    if (radiusM === previousRadiusM) return;
+    loadedCategoryRadii.delete(categoryId);
+    if (activeCategoryIds.has(categoryId) && currentParsedRoute) {
+      loadPois(currentParsedRoute, true, false, [categoryId], [categoryId]);
+    }
   });
   poiPrevious.addEventListener('click', () => {
     poiPage -= 1;

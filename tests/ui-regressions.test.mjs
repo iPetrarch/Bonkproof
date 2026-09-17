@@ -122,7 +122,7 @@ test('POI section status keeps partial retries incomplete and preserves successf
   assert.match(app, /poiSectionStatus\.completed \+= 1/);
   assert.match(app, /poiSectionStatus\.failed\.add\(workload\.id\)/);
   assert.match(app, /const pinnedFallbacks = \[\.\.\.pinnedPoiSnapshots\.entries\(\)\]/);
-  assert.match(app, /const deduped = new Map\(\[\.\.\.\(retryFailedOnly \? currentPois : \[\]\)\.map/);
+  assert.match(app, /const deduped = new Map\(\[\.\.\.\(retryFailedOnly \|\| incremental \? currentPois : \[\]\)\.map/);
   assert.match(app, /loadPois\(currentParsedRoute, true, failedPoiSections\.length > 0\)/);
 });
 
@@ -246,7 +246,8 @@ test('reload is disabled before a route, preserves IDs and prevents parallel sea
   assert.match(app, /selectedPoiIds = new Set\(\[\.\.\.selectedPoiIds\].*poiKey\(poi\)/s);
   assert.match(app, /waitForPoiBackoff\(1000/);
   assert.match(app, /failedPoiSections\.length > 0/);
-  assert.match(app, /if \(workloadPosition < workloads\.length - 1\) await waitForPoiBackoff\(1000/);
+  assert.match(app, /if \(paceAfterWorkload && workloadPosition < workloads\.length - 1\) await waitForPoiBackoff\(1000/);
+  assert.match(app, /paceAfterWorkload = candidates\.poiProvider !== 'overture-local'/);
   assert.match(app, /Overpass begrenzt derzeit die Anfragen/);
 });
 
@@ -254,7 +255,7 @@ test('pagination and dynamic filters update locally while new searches are expli
   assert.match(app, /poiNext\.addEventListener\('click', \(\) => \{[\s\S]*?renderPois\(currentPois, currentCategories\)/);
   assert.match(app, /const categoryId = button\.dataset\.categoryToggle/);
   assert.match(app, /if \(enabling\) activeCategoryIds\.add\(categoryId\);\s*else activeCategoryIds\.delete\(categoryId\);/);
-  assert.match(app, /if \(enabling && currentParsedRoute\)[\s\S]*?loadPois\(currentParsedRoute, true, false\)/);
+  assert.match(app, /if \(enabling && currentParsedRoute && !categoryIsLoaded\(categoryId\)\)[\s\S]*?loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
   assert.match(app, /defaultEnabledCategoryIds\(config\)/);
   assert.match(app, /selectedPoiIds\.has\(poiKey\(poi\)\)/);
   assert.match(app, /const mapPois = visiblePois\.concat\(currentPois\.filter/);
