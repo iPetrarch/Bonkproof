@@ -50,3 +50,5 @@ jobs:
           git commit -m 'Optimize incremental local POI loading'
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:chatgpt/finish-incremental-poi-categories
+
+# retrigger after helper whitespace fix
