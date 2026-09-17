@@ -28,7 +28,7 @@ app = replace_once(
 app = replace_once(
     app,
     "    const payload = await response.json();\n    return Array.isArray(payload.elements) ? payload.elements : [];\n",
-    "    const payload = await response.json();\n    const elements = Array.isArray(payload.elements) ? payload.elements : [];\n    Object.defineProperty(elements, 'poiProvider', {\n      value: response.headers.get('X-Bonkproof-POI-Provider') || 'overpass',\n      enumerable: false,\n    });\n    return elements;\n",
+    "    const payload = await response.json();\n    const elements = Array.isArray(payload.elements) ? payload.elements : [];\n    Object.defineProperty(elements, 'poiProvider', {\n      value: response.headers.get('X-Bonkproof-Poi-Provider') || 'overpass',\n      enumerable: false,\n    });\n    return elements;\n",
 )
 app = replace_once(
     app,
@@ -48,17 +48,17 @@ app = replace_once(
 app = replace_once(
     app,
     "      const geometry = buildRouteGeometry(parsed);\n      const pinnedFallbacks = [...pinnedPoiSnapshots.entries()].map(([id, poi]) => [id, { ...poi, status: 'pinned' }]);\n      const deduped = new Map([...(retryFailedOnly ? currentPois : []).map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);\n      const workloads = retryFailedOnly\n",
-    "      const geometry = buildRouteGeometry(parsed);\n      const pinnedFallbacks = [...pinnedPoiSnapshots.entries()].map(([id, poi]) => [id, { ...poi, status: 'pinned' }]);\n      const replacedIds = new Set(replaceCategoryIds || []);\n      const existingPois = (retryFailedOnly || incremental)\n        ? currentPois.filter((poi) => !replacedIds.has(poi.category.id))\n        : [];\n      const deduped = new Map([...existingPois.map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);\n      const previousUnrelatedFailures = incremental\n        ? failedPoiSections.filter((workload) => !workload.categories.some((category) => queryCategoryIds.has(category.id)))\n        : [];\n      const workloads = retryFailedOnly\n",
+    "      const geometry = buildRouteGeometry(parsed);\n      const pinnedFallbacks = [...pinnedPoiSnapshots.entries()].map(([id, poi]) => [id, { ...poi, status: 'pinned' }]);\n      const replacedIds = new Set(replaceCategoryIds || []);\n      const previousUnrelatedFailures = incremental\n        ? failedPoiSections.filter((workload) => !workload.categories.some((category) => queryCategoryIds.has(category.id)))\n        : [];\n      const deduped = new Map([...(retryFailedOnly || incremental ? currentPois : []).map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);\n      const freshQueriedPois = new Map();\n      const workloads = retryFailedOnly\n",
 )
 app = replace_once(
     app,
     "        const workloadCategories = workload.categories;\n        if (signal.aborted) return;\n",
-    "        const workloadCategories = workload.categories;\n        let paceAfterWorkload = false;\n        if (signal.aborted) return;\n",
+    "        const workloadCategories = workload.categories;\n        let paceAfterWorkload = true;\n        if (signal.aborted) return;\n",
 )
 app = replace_once(
     app,
-    "          if (!candidates) return;\n          candidates.forEach((element) => {\n",
-    "          if (!candidates) return;\n          paceAfterWorkload = candidates.poiProvider !== 'overture-local';\n          candidates.forEach((element) => {\n",
+    "          if (!candidates) return;\n          candidates.forEach((element) => {\n            normalizePoiPassBys(element, workloadCategories, geometry, config).forEach((poi) => {\n              const key = poiKey(poi);\n              const existing = deduped.get(key);\n              if (!existing || existing.status === 'pinned' || poi.offRouteM < existing.offRouteM) {\n                deduped.set(key, poi);\n                if (pinnedPoiIds.has(key)) pinnedPoiSnapshots.set(key, { ...poi });\n              }\n            });\n          });\n",
+    "          if (!candidates) return;\n          paceAfterWorkload = candidates.poiProvider !== 'overture-local';\n          candidates.forEach((element) => {\n            normalizePoiPassBys(element, workloadCategories, geometry, config).forEach((poi) => {\n              const key = poiKey(poi);\n              const freshExisting = freshQueriedPois.get(key);\n              if (!freshExisting || poi.offRouteM < freshExisting.offRouteM) freshQueriedPois.set(key, poi);\n              const existing = deduped.get(key);\n              if (incremental || !existing || existing.status === 'pinned' || poi.offRouteM < existing.offRouteM) {\n                deduped.set(key, poi);\n                if (pinnedPoiIds.has(key)) pinnedPoiSnapshots.set(key, { ...poi });\n              }\n            });\n          });\n",
 )
 app = replace_once(
     app,
@@ -67,8 +67,13 @@ app = replace_once(
 )
 app = replace_once(
     app,
+    "      const pois = Array.from(deduped.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);\n",
+    "      let finalPois = deduped;\n      if (incremental && replacedIds.size > 0 && failedWorkloads.length === 0) {\n        finalPois = new Map(currentPois\n          .filter((poi) => !replacedIds.has(poi.category.id))\n          .map((poi) => [poiKey(poi), poi]));\n        pinnedFallbacks.forEach(([id, poi]) => finalPois.set(id, poi));\n        freshQueriedPois.forEach((poi, id) => finalPois.set(id, poi));\n      }\n      const pois = Array.from(finalPois.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);\n",
+)
+app = replace_once(
+    app,
     "      failedPoiSections = failedWorkloads;\n      renderPois(pois, config.categories);\n      setPoiStatus(\n        failedWorkloads.length > 0\n",
-    "      failedPoiSections = incremental ? [...previousUnrelatedFailures, ...failedWorkloads] : failedWorkloads;\n      if (failedPoiSections.length > 0) {\n        poiSectionStatus.failed = new Set(failedPoiSections.map((workload) => workload.id));\n      }\n      if (failedWorkloads.length === 0) {\n        categories.forEach((category) => loadedCategoryRadii.set(category.id, category.radiusM));\n      } else {\n        categories.forEach((category) => loadedCategoryRadii.delete(category.id));\n      }\n      renderPois(pois, config.categories);\n      setPoiStatus(\n        failedPoiSections.length > 0\n",
+    "      failedPoiSections = incremental ? [...previousUnrelatedFailures, ...failedWorkloads] : failedWorkloads;\n      if (failedWorkloads.length === 0) {\n        categories.forEach((category) => loadedCategoryRadii.set(category.id, category.radiusM));\n      } else {\n        categories.forEach((category) => loadedCategoryRadii.delete(category.id));\n      }\n      renderPois(pois, config.categories);\n      setPoiStatus(\n        failedPoiSections.length > 0\n",
 )
 app = replace_once(
     app,
@@ -78,7 +83,7 @@ app = replace_once(
 app = replace_once(
     app,
     "    if (enabling && currentParsedRoute) {\n      loadPois(currentParsedRoute, true, false);\n    } else {\n",
-    "    if (enabling && currentParsedRoute && !categoryIsLoaded(categoryId)) {\n      loadPois(currentParsedRoute, true, false, [categoryId]);\n    } else {\n",
+    "    if (enabling && currentParsedRoute && !categoryIsLoaded(categoryId)) {\n      loadPois(currentParsedRoute, true, false, [categoryId], [categoryId]);\n    } else {\n",
 )
 app = replace_once(
     app,
@@ -111,11 +116,11 @@ function between(start, end) {
 test('enabling a category fetches only an uncached category', () => {
   const block = between("poiCategories.addEventListener('click'", "poiCategories.addEventListener('change'");
   assert.match(block, /!categoryIsLoaded\(categoryId\)/);
-  assert.match(block, /loadPois\(currentParsedRoute, true, false, \[categoryId\]\)/);
+  assert.match(block, /loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
   assert.doesNotMatch(block, /loadPois\(currentParsedRoute, true, false\);/);
 });
 
-test('radius changes invalidate and replace only the affected category, even after disabled edits', () => {
+test('radius changes invalidate and replace only the affected category', () => {
   const block = between("poiCategories.addEventListener('change'", "poiPrevious.addEventListener");
   const invalidation = block.indexOf('loadedCategoryRadii.delete(categoryId)');
   const activeGuard = block.indexOf('if (activeCategoryIds.has(categoryId)');
@@ -129,8 +134,9 @@ test('gap distance settings remain local-only', () => {
   assert.doesNotMatch(block, /fetch\(/);
 });
 
-test('local Overture responses skip legacy one-second pacing while fallback responses keep it', () => {
-  assert.match(app, /response\.headers\.get\('X-Bonkproof-POI-Provider'\) \|\| 'overpass'/);
+test('only confirmed local Overture responses skip legacy pacing', () => {
+  assert.match(app, /let paceAfterWorkload = true/);
+  assert.match(app, /response\.headers\.get\('X-Bonkproof-Poi-Provider'\) \|\| 'overpass'/);
   assert.match(app, /paceAfterWorkload = candidates\.poiProvider !== 'overture-local'/);
   assert.match(app, /if \(paceAfterWorkload && workloadPosition < workloads\.length - 1\) await waitForPoiBackoff\(1000/);
 });
@@ -140,6 +146,12 @@ test('loaded category cache is radius-aware and resets with route view state', (
   assert.match(app, /loadedCategoryRadii\.get\(categoryId\) === radiusM/);
   assert.match(app, /loadedCategoryRadii = new Map\(\)/);
   assert.match(app, /loadedCategoryRadii\.set\(category\.id, category\.radiusM\)/);
+});
+
+test('successful radius replacement removes stale POIs only after the targeted request completes', () => {
+  assert.match(app, /if \(incremental && replacedIds\.size > 0 && failedWorkloads\.length === 0\)/);
+  assert.match(app, /filter\(\(poi\) => !replacedIds\.has\(poi\.category\.id\)\)/);
+  assert.match(app, /freshQueriedPois\.forEach\(\(poi, id\) => finalPois\.set\(id, poi\)\)/);
 });
 """, encoding='utf-8')
 
@@ -153,7 +165,7 @@ addition = """
 
 The browser keeps successfully loaded POI categories for the current route and radius in memory. Enabling a new category queries only that category; disabling and re-enabling an already loaded category at the same radius is local-only. Changing a category radius invalidates and reloads only that category. Gap-warning distance settings never trigger a POI request and only recalculate the existing route analysis.
 
-The historical one-second inter-package delay is skipped when a package was served by the same-origin local Overture API. If a request falls back to the public Overpass service, the existing conservative pacing and retry behavior remains in place.
+The historical one-second inter-package delay is skipped only when a package is confirmed as served by the same-origin local Overture API. If a request falls back to the public Overpass service, the existing conservative pacing and retry behavior remains in place.
 """
 if addition.strip() not in doc:
     if marker not in doc:
