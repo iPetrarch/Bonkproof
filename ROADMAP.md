@@ -31,7 +31,23 @@ This roadmap describes direction, not promises. Bonkproof will evolve in small, 
 - PWA installation
 - Shareable routebooks
 - Self-hosted backend mode where external API limits require it
-- Optional integration with live-tracking tools such as TrackKin
+
+### TrackKin integration — planned tour handoff
+
+Bonkproof should remain the planning and routebook tool, while TrackKin remains responsible for live tracking and tour execution. A later integration may connect both without merging the projects.
+
+Possible workflow:
+
+1. Load and analyse a GPX route in Bonkproof.
+2. Select planned resupply or other routebook stops.
+3. Export or hand off the route plus selected stop metadata to TrackKin.
+4. TrackKin uses those planned stops as tour checkpoints for live distance, ETA and plan-versus-actual context.
+
+A small versioned interchange format should be preferred over coupling either application to the other's internal storage. Candidate stop fields include a stable stop/pass ID, name, coordinates, route kilometre, category and optional descriptive metadata. Multiple passes of the same physical POI must remain distinguishable.
+
+A later bidirectional extension may allow TrackKin to report actual, skipped or completed stops back for post-ride comparison, but this is explicitly not required for the first integration stage.
+
+The integration must remain optional: Bonkproof must continue to work without a TrackKin account or backend, and TrackKin must not depend on Bonkproof for its core live-tracking functionality.
 
 ## Non-goals for now
 
