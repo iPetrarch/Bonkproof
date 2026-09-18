@@ -7,6 +7,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
 import { buildRoutePointSnapshots } from './export-model.js';
 import { createExportFile, downloadExportFile, sanitizeExportBaseName } from './export-core.js';
 import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExportProfile } from './export-profiles.js';
+import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -50,6 +51,7 @@ import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExpo
   const exportFilename = document.getElementById('export-filename');
   const exportVerification = document.getElementById('export-verification');
   const exportDownload = document.getElementById('export-download');
+  const exportGapWarnings = document.getElementById('export-gap-warnings');
   const poiWarningSummary = document.getElementById('poi-warning-summary');
   const poiWarningList = document.getElementById('poi-warning-list');
   const reloadPois = document.getElementById('reload-pois');
@@ -194,6 +196,7 @@ import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExpo
     routeCard.hidden = true;
     dropZone.hidden = false;
     exportTab.disabled = true;
+    exportGapWarnings.checked = false;
     if (activeTab === 'export') setActiveTab('pois');
     renderExportPanel();
     fileInput.value = '';
@@ -403,6 +406,7 @@ import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExpo
     dropZone.hidden = true;
     setPoiSearchRunning(false);
     exportTab.disabled = false;
+    exportGapWarnings.checked = false;
     renderRoutebook();
     renderExportPanel();
   }
@@ -416,6 +420,17 @@ import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExpo
       pinnedPoiIds,
       poiKey,
     });
+    if (exportGapWarnings.checked) {
+      const reliableSelected = filterReliableSelectedPoiIds(currentPois, selectedPoiIds, resupplyProfile, poiKey);
+      routePoints.push(...buildCriticalGapExportPoints({
+        parsedRoute: currentParsedRoute,
+        pois: filterReliableResupplyPois(currentPois, resupplyProfile),
+        selectedPoiIds: reliableSelected,
+        routeDistanceMeters: currentRouteDistanceMeters,
+        gapSettings,
+        enabled: true,
+      }));
+    }
     return createExportFile(format, {
       sourceGpx: currentSourceGpxText,
       fileName: currentRouteFileName,
@@ -461,11 +476,26 @@ import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExpo
     const formatId = exportFormat.value || profile.formats[0];
     const format = EXPORT_FORMATS[formatId];
     const selectedCount = selectedPoiIds.size;
+    const warningCount = hasRoute && exportGapWarnings.checked
+      ? buildCriticalGapExportPoints({
+        parsedRoute: currentParsedRoute,
+        pois: filterReliableResupplyPois(currentPois, resupplyProfile),
+        selectedPoiIds: filterReliableSelectedPoiIds(currentPois, selectedPoiIds, resupplyProfile, poiKey),
+        routeDistanceMeters: currentRouteDistanceMeters,
+        gapSettings,
+        enabled: true,
+      }).length
+      : 0;
+
+    const stopSummary = selectedCount > 0
+      ? `${selectedCount} selected stop${selectedCount === 1 ? '' : 's'} will be included in route order.`
+      : 'No stops selected. The route can still be exported without Bonkproof stop points.';
+    const warningSummary = exportGapWarnings.checked
+      ? ` ${warningCount} critical supply-gap warning point${warningCount === 1 ? '' : 's'} will also be included.`
+      : '';
 
     exportSelectionSummary.textContent = hasRoute
-      ? (selectedCount > 0
-        ? `${selectedCount} selected stop${selectedCount === 1 ? '' : 's'} will be included in route order.`
-        : 'No stops selected. The route can still be exported without Bonkproof stop points.')
+      ? `${stopSummary}${warningSummary}`
       : 'Load a route to export it.';
 
     exportCompatibility.textContent = `${profile.note} ${format?.note || ''}`.trim();
@@ -1202,6 +1232,7 @@ import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExpo
   });
   exportTarget.addEventListener('change', renderExportPanel);
   exportFormat.addEventListener('change', renderExportPanel);
+  exportGapWarnings.addEventListener('change', renderExportPanel);
   exportDownload.addEventListener('click', () => {
     try {
       downloadCurrentRouteExport(exportFormat.value);
