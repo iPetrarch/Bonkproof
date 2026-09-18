@@ -73,6 +73,18 @@ test('Export UI uses data-driven profiles and downloads the selected format', ()
   assert.match(app, /sanitizeExportBaseName\(currentRouteFileName \|\| currentParsedRoute\.name\)/);
 });
 
+
+test('critical gap export warnings are explicit opt-in and use current gap settings', () => {
+  assert.match(index, /id="export-gap-warnings" type="checkbox"/);
+  assert.doesNotMatch(index, /id="export-gap-warnings"[^>]*checked/);
+  assert.match(app, /exportGapWarnings\.checked = false;/);
+  assert.match(app, /if \(exportGapWarnings\.checked\)[\s\S]*?buildCriticalGapExportPoints/);
+  assert.match(app, /gapSettings,/);
+  assert.match(app, /filterReliableSelectedPoiIds\(currentPois, selectedPoiIds, resupplyProfile, poiKey\)/);
+  assert.match(app, /exportGapWarnings\.addEventListener\('change', renderExportPanel\)/);
+  assert.match(app, /critical supply-gap warning point/);
+});
+
 test('a POI can be selected and removed through the shared selection state', () => {
   const id = poiKey(pois[0]);
   const selected = togglePoiSelection(new Set(), id);
