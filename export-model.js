@@ -3,6 +3,19 @@ export function normalizePoiDescription(tags = {}) {
   return description;
 }
 
+function buildSourceIdentity(poi) {
+  if (poi.sourceIdentity && typeof poi.sourceIdentity === 'object') {
+    return { ...poi.sourceIdentity };
+  }
+  if (poi.osmType === 'overture') {
+    return { provider: 'overture', id: poi.osmId };
+  }
+  if (poi.osmType === 'node' || poi.osmType === 'way' || poi.osmType === 'relation') {
+    return { provider: 'openstreetmap', osmType: poi.osmType, osmId: poi.osmId };
+  }
+  return { provider: 'unknown', type: poi.osmType ?? null, id: poi.osmId ?? null };
+}
+
 export function buildRoutePointSnapshot(poi, options = {}) {
   const {
     selectedPoiIds = new Set(),
@@ -27,11 +40,7 @@ export function buildRoutePointSnapshot(poi, options = {}) {
     status: poi.status || null,
     selected: selectedPoiIds.has(id),
     pinned: pinnedPoiIds.has(id),
-    sourceIdentity: {
-      provider: 'openstreetmap',
-      osmType: poi.osmType,
-      osmId: poi.osmId,
-    },
+    sourceIdentity: buildSourceIdentity(poi),
     passIdentity: poi.passId
       ? {
         physicalPoiId: poi.physicalPoiId || `${poi.osmType}/${poi.osmId}`,
