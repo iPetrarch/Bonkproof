@@ -5,7 +5,8 @@ import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-pro
 import { buildActiveCategories, buildOverpassQuery, defaultCategoryRadii, defaultEnabledCategoryIds, getGraceMeters, matchingCategory } from './poi-config.js';
 import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resupply-profile.js';
 import { buildRoutePointSnapshots } from './export-model.js';
-import { createExportFile, downloadExportFile } from './export-core.js';
+import { createExportFile, downloadExportFile, sanitizeExportBaseName } from './export-core.js';
+import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExportProfile } from './export-profiles.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -40,6 +41,15 @@ import { createExportFile, downloadExportFile } from './export-core.js';
   const routebookSummary = document.getElementById('routebook-summary');
   const routebookEmpty = document.getElementById('routebook-empty');
   const routebookList = document.getElementById('routebook-list');
+  const exportTab = document.getElementById('export-tab');
+  const exportPanel = document.getElementById('export-panel');
+  const exportTarget = document.getElementById('export-target');
+  const exportFormat = document.getElementById('export-format');
+  const exportSelectionSummary = document.getElementById('export-selection-summary');
+  const exportCompatibility = document.getElementById('export-compatibility');
+  const exportFilename = document.getElementById('export-filename');
+  const exportVerification = document.getElementById('export-verification');
+  const exportDownload = document.getElementById('export-download');
   const poiWarningSummary = document.getElementById('poi-warning-summary');
   const poiWarningList = document.getElementById('poi-warning-list');
   const reloadPois = document.getElementById('reload-pois');
@@ -183,6 +193,9 @@ import { createExportFile, downloadExportFile } from './export-core.js';
     resetRoutebook();
     routeCard.hidden = true;
     dropZone.hidden = false;
+    exportTab.disabled = true;
+    if (activeTab === 'export') setActiveTab('pois');
+    renderExportPanel();
     fileInput.value = '';
     setPoiSearchRunning(false);
     poiCategories.hidden = !poiConfig;
@@ -304,6 +317,7 @@ import { createExportFile, downloadExportFile } from './export-core.js';
       gapSettingsError.textContent = '';
       gapSettingInputs.forEach((input) => input.removeAttribute('aria-invalid'));
       renderGapSettingsPreview();
+  renderExportPanel();
       renderRoutebook();
       renderWarnings();
       renderWarningLayer();
@@ -388,7 +402,9 @@ import { createExportFile, downloadExportFile } from './export-core.js';
     routeCard.hidden = false;
     dropZone.hidden = true;
     setPoiSearchRunning(false);
+    exportTab.disabled = false;
     renderRoutebook();
+    renderExportPanel();
   }
 
   function buildCurrentRouteExport(format) {
@@ -411,6 +427,56 @@ import { createExportFile, downloadExportFile } from './export-core.js';
 
   function downloadCurrentRouteExport(format) {
     downloadExportFile(buildCurrentRouteExport(format));
+  }
+
+  function populateExportTargets() {
+    if (exportTarget.options.length > 0) return;
+    EXPORT_TARGET_PROFILES.forEach((profile) => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.label;
+      exportTarget.appendChild(option);
+    });
+  }
+
+  function syncExportFormats(profileId) {
+    const available = availableExportFormats(profileId);
+    const previous = exportFormat.value;
+    exportFormat.innerHTML = '';
+    available.forEach((formatId) => {
+      const option = document.createElement('option');
+      option.value = formatId;
+      option.textContent = EXPORT_FORMATS[formatId]?.label || formatId.toUpperCase();
+      exportFormat.appendChild(option);
+    });
+    if (available.includes(previous)) exportFormat.value = previous;
+  }
+
+  function renderExportPanel() {
+    populateExportTargets();
+    const hasRoute = Boolean(currentParsedRoute && currentSourceGpxText);
+    if (!exportTarget.value) exportTarget.value = 'generic';
+    const profile = getExportProfile(exportTarget.value);
+    syncExportFormats(profile.id);
+    const formatId = exportFormat.value || profile.formats[0];
+    const format = EXPORT_FORMATS[formatId];
+    const selectedCount = selectedPoiIds.size;
+
+    exportSelectionSummary.textContent = hasRoute
+      ? (selectedCount > 0
+        ? `${selectedCount} selected stop${selectedCount === 1 ? '' : 's'} will be included in route order.`
+        : 'No stops selected. The route can still be exported without Bonkproof stop points.')
+      : 'Load a route to export it.';
+
+    exportCompatibility.textContent = `${profile.note} ${format?.note || ''}`.trim();
+    exportVerification.textContent = profile.verificationStatus === 'confirmed'
+      ? 'Confirmed'
+      : (profile.verificationStatus === 'expected' ? 'Expected / not confirmed' : 'Unknown');
+
+    exportFilename.textContent = hasRoute
+      ? `${sanitizeExportBaseName(currentRouteFileName || currentParsedRoute.name)}-bonkproof.${formatId}`
+      : '—';
+    exportDownload.disabled = !hasRoute;
   }
 
   function renderCategoryControls(config) {
@@ -609,6 +675,7 @@ import { createExportFile, downloadExportFile } from './export-core.js';
     renderPois(currentPois, currentCategories);
     renderRoutebook();
     renderWarnings();
+    renderExportPanel();
   }
 
   function togglePin(poi) {
@@ -624,6 +691,7 @@ import { createExportFile, downloadExportFile } from './export-core.js';
     renderPois(currentPois, currentCategories);
     renderRoutebook();
     renderWarnings();
+    renderExportPanel();
   }
 
   function renderRoutebook() {
@@ -673,16 +741,21 @@ import { createExportFile, downloadExportFile } from './export-core.js';
     activeTab = tab;
     const showPois = tab === 'pois';
     const showRoutebook = tab === 'routebook';
+    const showExport = tab === 'export';
     poisTab.classList.toggle('is-active', showPois);
     poisTab.setAttribute('aria-selected', String(showPois));
     routebookTab.classList.toggle('is-active', showRoutebook);
     routebookTab.setAttribute('aria-selected', String(showRoutebook));
+    exportTab.classList.toggle('is-active', showExport);
+    exportTab.setAttribute('aria-selected', String(showExport));
     poiPanel.hidden = !showPois;
     routebookPanel.hidden = !showRoutebook;
+    exportPanel.hidden = !showExport;
     renderMapPois();
     renderWarnings();
     renderWarningLayer();
     if (showRoutebook) renderRoutebook();
+    if (showExport) renderExportPanel();
   }
 
   function clusterIcon(items) {
@@ -820,7 +893,7 @@ import { createExportFile, downloadExportFile } from './export-core.js';
   function renderMapPois() {
     poiLayer.clearLayers();
     poiMarkers.clear();
-    if (activeTab === 'routebook') {
+    if (activeTab === 'routebook' || activeTab === 'export') {
       currentPois.filter((poi) => selectedPoiIds.has(poiKey(poi))).forEach((poi) => renderPoiMarker(poi));
       return;
     }
@@ -1124,6 +1197,19 @@ import { createExportFile, downloadExportFile } from './export-core.js';
   });
   poisTab.addEventListener('click', () => setActiveTab('pois'));
   routebookTab.addEventListener('click', () => setActiveTab('routebook'));
+  exportTab.addEventListener('click', () => {
+    if (!exportTab.disabled) setActiveTab('export');
+  });
+  exportTarget.addEventListener('change', renderExportPanel);
+  exportFormat.addEventListener('change', renderExportPanel);
+  exportDownload.addEventListener('click', () => {
+    try {
+      downloadCurrentRouteExport(exportFormat.value);
+    } catch (error) {
+      console.error(error);
+      showError(error instanceof Error ? error.message : 'Could not export this route.');
+    }
+  });
   map.on('zoomend', () => renderMapPois());
 
   ['dragenter', 'dragover'].forEach((type) => {
