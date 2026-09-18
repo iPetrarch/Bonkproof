@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --check app.js && node --check routebook.js && node --check poi-search.js && node --check poi-projection.js && node --check poi-clustering.js && node --check poi-config.js && node --check resupply-profile.js && node --check export-model.js && node --check export-core.js && node --test tests/*.test.mjs"
+    "test": "node --check app.js && node --check routebook.js && node --check poi-search.js && node --check poi-projection.js && node --check poi-clustering.js && node --check poi-config.js && node --check resupply-profile.js && node --check export-model.js && node --check export-core.js && node --check export-profiles.js && node --test tests/*.test.mjs"
   }
 }
