@@ -4,6 +4,8 @@ import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_D
 import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
 import { buildActiveCategories, buildOverpassQuery, defaultCategoryRadii, defaultEnabledCategoryIds, getGraceMeters, matchingCategory } from './poi-config.js';
 import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resupply-profile.js';
+import { buildRoutePointSnapshots } from './export-model.js';
+import { createExportFile, downloadExportFile } from './export-core.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -77,6 +79,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
   let pinnedPoiSnapshots = new Map();
   let currentRouteDistanceMeters = 0;
   let currentParsedRoute = null;
+  let currentSourceGpxText = null;
+  let currentRouteFileName = null;
   let poiSearchRunning = false;
   let currentPoiSections = [];
   let failedPoiSections = [];
@@ -169,6 +173,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     poiAbortController?.abort();
     routeLayer.clearLayers();
     currentParsedRoute = null;
+    currentSourceGpxText = null;
+    currentRouteFileName = null;
     currentPoiSections = [];
     failedPoiSections = [];
     poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: false };
@@ -338,7 +344,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     });
   }
 
-  function renderRoute(parsed, fileName) {
+  function renderRoute(parsed, fileName, sourceGpxText) {
     poiAbortController?.abort();
     poiSearchRunning = false;
     routeLayer.clearLayers();
@@ -350,6 +356,8 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     pinnedPoiSnapshots = new Map();
     currentRouteDistanceMeters = parsed.distanceMeters;
     currentParsedRoute = parsed;
+    currentSourceGpxText = sourceGpxText;
+    currentRouteFileName = fileName;
     currentPoiSections = buildPoiQuerySections(parsed);
     failedPoiSections = [];
     poiSectionStatus = { total: currentPoiSections.length, completed: 0, failed: new Set(), started: false };
@@ -381,6 +389,28 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     dropZone.hidden = true;
     setPoiSearchRunning(false);
     renderRoutebook();
+  }
+
+  function buildCurrentRouteExport(format) {
+    if (!currentParsedRoute || !currentSourceGpxText) {
+      throw new Error('No GPX route is loaded.');
+    }
+    const routePoints = buildRoutePointSnapshots(currentPois, {
+      selectedPoiIds,
+      pinnedPoiIds,
+      poiKey,
+    });
+    return createExportFile(format, {
+      sourceGpx: currentSourceGpxText,
+      fileName: currentRouteFileName,
+      routeName: currentParsedRoute.name || currentRouteFileName,
+      segments: currentParsedRoute.segments,
+      routePoints,
+    });
+  }
+
+  function downloadCurrentRouteExport(format) {
+    downloadExportFile(buildCurrentRouteExport(format));
   }
 
   function renderCategoryControls(config) {
@@ -1037,7 +1067,7 @@ import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resu
     try {
       const text = await file.text();
       const parsed = parseGpx(text);
-      renderRoute(parsed, file.name);
+      renderRoute(parsed, file.name, text);
       await loadPois(parsed);
     } catch (error) {
       console.error(error);
