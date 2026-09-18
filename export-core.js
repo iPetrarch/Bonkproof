@@ -111,8 +111,8 @@ export function serializeTcxCourse({ routeName, segments, routePoints }) {
   }
 
   let cumulativeMeters = 0;
-  let previous = null;
   const trackBlocks = segments.filter((segment) => Array.isArray(segment) && segment.length).map((segment) => {
+    let previous = null;
     const trackpoints = segment.map((point) => {
       if (previous) cumulativeMeters += haversineMeters(previous, point);
       previous = point;
