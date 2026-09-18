@@ -119,6 +119,7 @@ jobs:
           put export-model.js
           put export-core.js
           put export-profiles.js
+          put export-gap-warnings.js
           put routebook.js
           put poi-search.js
           put poi-projection.js
