@@ -90,3 +90,32 @@ test('TCX remains exportable without selected stops', () => {
   assert.match(file.content, /<Track>/);
   assert.doesNotMatch(file.content, /<CoursePoint>/);
 });
+
+
+test('export-only warning points are serialized without entering normal selection state', () => {
+  const warning = {
+    id: 'bonkproof-gap:1000:40000:0',
+    name: '39 km supply gap',
+    description: 'Critical supply gap',
+    lat: 53.2,
+    lon: 7.5,
+    routeKm: 9.999,
+    categoryId: 'supply_gap_warning',
+    categoryLabel: 'Supply gap warning',
+    selected: false,
+    exportOnly: true,
+  };
+  const gpx = serializeGpxWithRoutePoints(
+    '<gpx><trk><trkseg><trkpt lat="1" lon="1"/></trkseg></trk></gpx>',
+    [warning],
+  );
+  assert.match(gpx, /39 km supply gap/);
+
+  const tcx = serializeTcxCourse({
+    routeName: 'Route',
+    segments: [[{ lat: 53, lon: 7 }, { lat: 53.3, lon: 7.6 }]],
+    routePoints: [warning],
+  });
+  assert.equal((tcx.match(/<CoursePoint>/g) || []).length, 1);
+  assert.match(tcx, /Critical supply gap/);
+});
