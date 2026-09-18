@@ -399,3 +399,9 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 @media (max-width: 560px) {
   .export-controls, .export-meta { grid-template-columns: 1fr; }
 }
+
+
+.export-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.65rem; align-items: start; margin: 0 0 0.9rem; padding: 0.8rem; border: 1px solid var(--line); border-radius: 0.45rem; background: #f7f0e3; cursor: pointer; }
+.export-option input { width: 1.1rem; height: 1.1rem; margin-top: 0.1rem; accent-color: var(--ochre-strong); }
+.export-option strong, .export-option small { display: block; }
+.export-option small { margin-top: 0.2rem; color: var(--ink-soft); line-height: 1.4; }
