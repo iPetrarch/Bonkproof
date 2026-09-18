@@ -63,8 +63,10 @@ test('TCX export keeps route segments separate and sorts CoursePoints by route p
   });
   assert.equal((tcx.match(/<Track>/g) || []).length, 2);
   assert.equal((tcx.match(/<CoursePoint>/g) || []).length, 2);
+  const distances = [...tcx.matchAll(/<DistanceMeters>([0-9.]+)<\/DistanceMeters>/g)].map((match) => Number(match[1]));
+  assert.ok(distances[2] - distances[1] < 1, 'new track segment must not add a straight-line jump');
   assert.ok(tcx.indexOf('Route km 12.3') < tcx.indexOf('Route km 80.0'));
-  assert.match(tcx, /<Name>Bäcker &amp;<\/Name>/);
+  assert.match(tcx, /<Name>Bäcker &amp; M<\/Name>/);
   assert.match(tcx, /<Notes>Bäcker &amp; Markt &lt;Nord&gt; · Wasser &amp; Snacks/);
 });
 
