@@ -116,6 +116,8 @@ jobs:
           put index.html
           put styles.css
           put app.js
+          put export-model.js
+          put export-core.js
           put routebook.js
           put poi-search.js
           put poi-projection.js
