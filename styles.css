@@ -382,3 +382,20 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 .poi-marker.pinned-outside {
   opacity: 0.72;
 }
+
+
+.export-panel { max-width: 760px; padding: 1rem 0 0.25rem; }
+.export-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; margin: 0.35rem 0 1rem; }
+.export-controls label { display: grid; gap: 0.3rem; color: var(--ink-soft); font-size: 0.78rem; font-weight: 800; }
+.export-controls select { min-height: 42px; width: 100%; padding: 0.45rem 0.55rem; border: 1px solid var(--line); border-radius: 0.45rem; background: var(--panel-solid); color: var(--ink); }
+.export-controls select:focus-visible, #export-download:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
+.export-note { margin: 0 0 0.9rem; padding: 0.8rem; border-left: 4px solid var(--ochre); border-radius: 0.45rem; background: #f7f0e3; color: var(--ink-soft); line-height: 1.45; }
+.export-meta { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 0.6rem; margin: 0 0 1rem; }
+.export-meta div { min-width: 0; padding: 0.7rem; border: 1px solid var(--line); border-radius: 0.45rem; background: #f7f0e3; }
+.export-meta dt { color: var(--ink-soft); font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+.export-meta dd { margin: 0.18rem 0 0; overflow-wrap: anywhere; font-weight: 800; }
+#export-download:disabled { cursor: not-allowed; opacity: 0.45; }
+
+@media (max-width: 560px) {
+  .export-controls, .export-meta { grid-template-columns: 1fr; }
+}
