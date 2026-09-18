@@ -118,6 +118,7 @@ jobs:
           put app.js
           put export-model.js
           put export-core.js
+          put export-profiles.js
           put routebook.js
           put poi-search.js
           put poi-projection.js
