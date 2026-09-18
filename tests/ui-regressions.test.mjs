@@ -44,6 +44,35 @@ const pois = [
   { osmType: 'node', osmId: 2, name: 'Early stop', routeKm: 25, offRouteM: 10, category: { label: 'Fuel station' } },
 ];
 
+
+test('Export tab is route-gated and exposes GPX/TCX download controls', () => {
+  assert.match(index, /id="export-tab"[^>]*disabled/);
+  assert.match(index, /id="export-panel"[^>]*hidden/);
+  assert.match(index, /id="export-target"/);
+  assert.match(index, /id="export-format"/);
+  assert.match(index, /id="export-download"[^>]*disabled/);
+  assert.match(app, /exportTab\.disabled = false;/);
+  assert.match(app, /exportTab\.disabled = true;/);
+  assert.match(app, /const showExport = tab === 'export'/);
+  assert.match(app, /exportPanel\.hidden = !showExport/);
+});
+
+test('Export UI explains route-only exports and reflects selected stop count', () => {
+  assert.match(app, /No stops selected\. The route can still be exported without Bonkproof stop points\./);
+  assert.match(app, /selectedCount > 0/);
+  assert.match(app, /selected stop/);
+  assert.match(app, /renderExportPanel\(\)/);
+  assert.match(app, /toggleSelection\(poiId\)[\s\S]*?renderExportPanel\(\)/);
+});
+
+test('Export UI uses data-driven profiles and downloads the selected format', () => {
+  assert.match(app, /EXPORT_TARGET_PROFILES\.forEach/);
+  assert.match(app, /availableExportFormats\(profileId\)/);
+  assert.match(app, /getExportProfile\(exportTarget\.value\)/);
+  assert.match(app, /downloadCurrentRouteExport\(exportFormat\.value\)/);
+  assert.match(app, /sanitizeExportBaseName\(currentRouteFileName \|\| currentParsedRoute\.name\)/);
+});
+
 test('a POI can be selected and removed through the shared selection state', () => {
   const id = poiKey(pois[0]);
   const selected = togglePoiSelection(new Set(), id);
