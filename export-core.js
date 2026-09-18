@@ -25,7 +25,7 @@ export function sanitizeExportBaseName(value, fallback = 'bonkproof-route') {
 
 function selectedRoutePoints(routePoints) {
   return (routePoints || [])
-    .filter((point) => point?.selected)
+    .filter((point) => point?.selected || point?.exportOnly)
     .slice()
     .sort((a, b) => Number(a.routeKm) - Number(b.routeKm));
 }
