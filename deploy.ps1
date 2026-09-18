@@ -22,6 +22,7 @@ $publishFiles = @(
     'export-model.js',
     'export-core.js',
     'export-profiles.js',
+    'export-gap-warnings.js',
     'routebook.js',
     'poi-search.js',
     'poi-projection.js',
