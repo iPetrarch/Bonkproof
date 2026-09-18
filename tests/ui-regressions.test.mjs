@@ -17,7 +17,7 @@ const deploy = rawDeploy.replaceAll('\r\n', '\n');
 const index = rawIndex.replaceAll('\r\n', '\n');
 
 test('a rendered route hides the GPX import overlay', () => {
-  assert.match(app, /function renderRoute\(parsed, fileName\)[\s\S]*?dropZone\.hidden = true;/);
+  assert.match(app, /function renderRoute\(parsed, fileName, sourceGpxText\)[\s\S]*?dropZone\.hidden = true;/);
   assert.match(styles, /\.empty-state\[hidden\]\s*\{\s*display:\s*none;\s*\}/);
 });
 
@@ -72,7 +72,7 @@ test('an empty routebook treats the complete route as its longest gap', () => {
 test('gaps over 30 km are marked and a new route resets the selection', () => {
   const routebook = buildRoutebook(pois, new Set([poiKey(pois[1])]), 100000);
   assert.equal(routebook.entries.at(-1).isLongGap, true);
-  assert.match(app, /function renderRoute\(parsed, fileName\)[\s\S]*?selectedPoiIds = new Set\(\);/);
+  assert.match(app, /function renderRoute\(parsed, fileName, sourceGpxText\)[\s\S]*?selectedPoiIds = new Set\(\);/);
   assert.match(styles, /\.routebook-item\.long-gap/);
 });
 

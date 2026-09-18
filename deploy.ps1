@@ -19,6 +19,8 @@ $publishFiles = @(
     'index.html',
     'styles.css',
     'app.js',
+    'export-model.js',
+    'export-core.js',
     'routebook.js',
     'poi-search.js',
     'poi-projection.js',
