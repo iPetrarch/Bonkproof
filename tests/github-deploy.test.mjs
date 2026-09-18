@@ -60,6 +60,7 @@ test('GitHub deployment uploads the complete production publish set', () => {
     'export-model.js',
     'export-core.js',
     'export-profiles.js',
+    'export-gap-warnings.js',
     'routebook.js',
     'poi-search.js',
     'poi-projection.js',
