@@ -94,3 +94,23 @@ test('current gap thresholds are honored when building export warnings', () => {
   assert.equal(strict.length, 0);
   assert.equal(permissive.length, 1);
 });
+
+
+test('gap export projection does not mutate POIs or selection state', () => {
+  const pois = [{ osmType: 'node', osmId: 7, name: 'Stop', routeKm: 30, offRouteM: 5 }];
+  const selectedPoiIds = new Set(['node/7']);
+  const beforePois = structuredClone(pois);
+  const beforeIds = [...selectedPoiIds];
+
+  buildCriticalGapExportPoints({
+    parsedRoute: straightRoute(80),
+    pois,
+    selectedPoiIds,
+    routeDistanceMeters: 80000,
+    gapSettings: { criticalDistanceKm: 30, infoPercent: 66, warningPercent: 80, criticalPercent: 95 },
+    enabled: true,
+  });
+
+  assert.deepEqual(pois, beforePois);
+  assert.deepEqual([...selectedPoiIds], beforeIds);
+});
