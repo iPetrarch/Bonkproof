@@ -1,0 +1,35 @@
+schema_version: 1
+project:
+  name: "Bonkproof"
+  repository: "iPetrarch/Bonkproof"
+  classification: "personal"
+sync:
+  enabled: true
+  mode: "pull"
+  destination: "iPetrarch/SecondBrain"
+  snapshot_policy: "append_only"
+  source_paths:
+    - "README.md"
+    - "ROADMAP.md"
+    - "docs/overture-local.md"
+    - "docs/github-deploy.md"
+    - "docs/deployment.md"
+    - "docs/poi-filter-ux.md"
+    - "docs/ui-layout.md"
+  exclude:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/config.php"
+    - "**/data/**"
+    - "**/secrets/**"
+    - "**/*secret*"
+    - "**/*credential*"
+    - "**/*token*"
+    - "**/*runtime*data*"
+  trigger_policy:
+    type: "relevant_path_change"
+    note: "Create a new SecondBrain snapshot only when this manifest or one of source_paths changes."
+privacy:
+  allow_personal_secondbrain_ingest: true
+  contains_work_data: false
+  rule: "Do not add company, customer, employee, credential or runtime-personal data to this export contract."
