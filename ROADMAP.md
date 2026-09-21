@@ -43,7 +43,7 @@ Possible workflow:
 3. Export or hand off the route plus selected stop metadata to TrackKin.
 4. TrackKin uses those planned stops as tour checkpoints for live distance, ETA and plan-versus-actual context.
 
-A small versioned interchange format should be preferred over coupling either application to the other's internal storage. Candidate stop fields include a stable stop/pass ID, name, coordinates, route kilometre, category and optional descriptive metadata. Multiple passes of the same physical POI must remain distinguishable.
+A small versioned interchange format should be preferred over coupling either application to the other's internal storage. Bonkproof now prepares a `bonkproof-trackkin-handoff/v1` payload and a direct browser POST client; production activation depends on the matching authenticated TrackKin import endpoint. Candidate stop fields include a stable stop/pass ID, name, coordinates, route kilometre, category and optional descriptive metadata. Multiple passes of the same physical POI must remain distinguishable.
 
 A later bidirectional extension may allow TrackKin to report actual, skipped or completed stops back for post-ride comparison, but this is explicitly not required for the first integration stage.
 
