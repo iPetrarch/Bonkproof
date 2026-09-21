@@ -144,6 +144,12 @@
           <div><dt>Compatibility</dt><dd id="export-verification">Unknown</dd></div>
         </dl>
         <button id="export-download" class="primary-button" type="button" disabled>Download export</button>
+        <div class="export-note">
+          <strong>TrackKin</strong>
+          <p>Send the loaded GPX and selected routebook stops directly to TrackKin. Nothing is transferred until you press the button.</p>
+          <button id="trackkin-handoff" class="primary-button" type="button" data-endpoint="/trackkin/api/bonkproof-import.php" disabled>Routebook an TrackKin übergeben</button>
+          <p id="trackkin-handoff-status" class="status-copy" role="status">Load a route to prepare a TrackKin handoff.</p>
+        </div>
       </section>
 
     </section>

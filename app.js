@@ -8,6 +8,7 @@ import { buildRoutePointSnapshots } from './export-model.js';
 import { createExportFile, downloadExportFile, sanitizeExportBaseName } from './export-core.js';
 import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExportProfile } from './export-profiles.js';
 import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
+import { buildTrackKinHandoff, sendTrackKinHandoff } from './trackkin-handoff.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -52,6 +53,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   const exportVerification = document.getElementById('export-verification');
   const exportDownload = document.getElementById('export-download');
   const exportGapWarnings = document.getElementById('export-gap-warnings');
+  const trackkinHandoff = document.getElementById('trackkin-handoff');
+  const trackkinHandoffStatus = document.getElementById('trackkin-handoff-status');
   const poiWarningSummary = document.getElementById('poi-warning-summary');
   const poiWarningList = document.getElementById('poi-warning-list');
   const reloadPois = document.getElementById('reload-pois');
@@ -444,6 +447,34 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     downloadExportFile(buildCurrentRouteExport(format));
   }
 
+  function buildCurrentTrackKinHandoff() {
+    if (!currentParsedRoute || !currentSourceGpxText) throw new Error('No GPX route is loaded.');
+    return buildTrackKinHandoff({
+      sourceGpx: currentSourceGpxText,
+      fileName: currentRouteFileName,
+      routeName: currentParsedRoute.name || currentRouteFileName,
+      routeDistanceMeters: currentRouteDistanceMeters,
+      routePoints: buildRoutePointSnapshots(currentPois, { selectedPoiIds, pinnedPoiIds, poiKey }),
+    });
+  }
+
+  async function handoffCurrentRouteToTrackKin() {
+    const endpoint = trackkinHandoff.dataset.endpoint || '/trackkin/api/bonkproof-import.php';
+    trackkinHandoff.disabled = true;
+    trackkinHandoffStatus.textContent = 'Routebook wird an TrackKin übergeben …';
+    try {
+      const result = await sendTrackKinHandoff(endpoint, buildCurrentTrackKinHandoff());
+      trackkinHandoffStatus.textContent = 'Routebook wurde an TrackKin übergeben.';
+      if (result.redirect_url) window.location.assign(result.redirect_url);
+    } catch (error) {
+      console.error(error);
+      trackkinHandoffStatus.textContent = 'TrackKin-Übergabe ist auf der Gegenseite noch nicht verfügbar oder fehlgeschlagen.';
+      showError(error instanceof Error ? error.message : 'Could not hand off this route to TrackKin.');
+    } finally {
+      trackkinHandoff.disabled = !(currentParsedRoute && currentSourceGpxText);
+    }
+  }
+
   function populateExportTargets() {
     if (exportTarget.options.length > 0) return;
     EXPORT_TARGET_PROFILES.forEach((profile) => {
@@ -507,6 +538,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       ? `${sanitizeExportBaseName(currentRouteFileName || currentParsedRoute.name)}-bonkproof.${formatId}`
       : '—';
     exportDownload.disabled = !hasRoute;
+    trackkinHandoff.disabled = !hasRoute;
+    if (!hasRoute) trackkinHandoffStatus.textContent = 'Load a route to prepare a TrackKin handoff.';
   }
 
   function renderCategoryControls(config) {
@@ -1241,6 +1274,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       showError(error instanceof Error ? error.message : 'Could not export this route.');
     }
   });
+  trackkinHandoff.addEventListener('click', handoffCurrentRouteToTrackKin);
   map.on('zoomend', () => renderMapPois());
 
   ['dragenter', 'dragover'].forEach((type) => {
