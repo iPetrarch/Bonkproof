@@ -163,10 +163,14 @@ export function serializeTcxCourse({ routeName, segments, routePoints }) {
   ].filter((line) => line !== '').join('\n');
 }
 
-export function serializeTrackKinHandoff({ routeName, fileName, routeDistanceMeters, routePoints }) {
+export function serializeTrackKinHandoff({ routeName, fileName, routeDistanceMeters, routePointCount, routePoints }) {
   const distanceM = Math.round(Number(routeDistanceMeters));
   if (!Number.isFinite(distanceM) || distanceM <= 0) {
     throw new Error('Route distance is required for TrackKin export.');
+  }
+  const pointCount = Number(routePointCount);
+  if (!Number.isInteger(pointCount) || pointCount < 2) {
+    throw new Error('Route point count is required for TrackKin export.');
   }
   const checkpoints = (routePoints || [])
     .filter((point) => point?.selected === true)
@@ -206,6 +210,7 @@ export function serializeTrackKinHandoff({ routeName, fileName, routeDistanceMet
       name: String(routeName || '').trim() || null,
       source_filename: String(fileName || '').trim() || null,
       distance_m: distanceM,
+      point_count: pointCount,
     },
     checkpoints,
   }, null, 2);
@@ -237,6 +242,7 @@ export function createExportFile(format, context) {
         routeName: context.routeName,
         fileName: context.fileName,
         routeDistanceMeters: context.routeDistanceMeters,
+        routePointCount: context.routePointCount,
         routePoints: context.routePoints,
       }),
       filename: `${baseName}-trackkin.json`,
