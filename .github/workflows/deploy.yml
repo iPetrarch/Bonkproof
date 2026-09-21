@@ -120,6 +120,7 @@ jobs:
           put export-core.js
           put export-profiles.js
           put export-gap-warnings.js
+          put trackkin-handoff.js
           put routebook.js
           put poi-search.js
           put poi-projection.js
