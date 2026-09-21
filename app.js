@@ -436,6 +436,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       fileName: currentRouteFileName,
       routeName: currentParsedRoute.name || currentRouteFileName,
       routeDistanceMeters: currentRouteDistanceMeters,
+      routePointCount: currentParsedRoute.pointCount,
       segments: currentParsedRoute.segments,
       routePoints,
     });
