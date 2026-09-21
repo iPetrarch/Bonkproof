@@ -66,6 +66,8 @@ The public OpenStreetMap tile servers and public Overpass instances are shared c
 
 Before public production use, the site's privacy information should describe the local POI API, possible Overpass fallback, OpenStreetMap tile requests and unpkg dependency. Hosting or replacing these external dependencies may change that disclosure requirement.
 
+An optional TrackKin handoff is prepared as an explicit user action. When the rider presses the TrackKin handoff button, the original GPX text and the selected routebook stops are sent directly from the browser to the configured TrackKin import endpoint. Bonkproof does not send this data automatically. The TrackKin endpoint must enforce its own authentication, size limits and validation before this feature is considered production-ready.
+
 ## Status
 
 Bonkproof is at the beginning of development. Expect breaking changes and incomplete features until the first tagged release.
