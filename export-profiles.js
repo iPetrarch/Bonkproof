@@ -31,7 +31,6 @@ export const EXPORT_TARGET_PROFILES = [
     verificationStatus: 'expected',
     note: 'Exports the selected Bonkproof stops in a small versioned JSON handoff for TrackKin. The corresponding GPX route is selected separately in TrackKin and checked against the exported route distance.',
   },
-,
 ];
 
 export const EXPORT_FORMATS = {
