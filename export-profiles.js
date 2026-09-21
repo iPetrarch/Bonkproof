@@ -23,6 +23,15 @@ export const EXPORT_TARGET_PROFILES = [
     verificationStatus: 'expected',
     note: 'TCX carries selected stops as CoursePoints. Exact display and import behavior still depends on the target device or app and is not yet marked as confirmed.',
   },
+  {
+    id: 'trackkin',
+    label: 'TrackKin planned-tour handoff',
+    formats: ['trackkin'],
+    routePoints: 'confirmed',
+    verificationStatus: 'expected',
+    note: 'Exports the selected Bonkproof stops in a small versioned JSON handoff for TrackKin. The corresponding GPX route is selected separately in TrackKin and checked against the exported route distance.',
+  },
+,
 ];
 
 export const EXPORT_FORMATS = {
@@ -35,6 +44,11 @@ export const EXPORT_FORMATS = {
     id: 'tcx',
     label: 'TCX',
     note: 'Builds a TCX Course from Bonkproof route geometry and adds selected stops as CoursePoints.',
+  },
+  trackkin: {
+    id: 'trackkin',
+    label: 'TrackKin JSON',
+    note: 'Carries selected Bonkproof stops, their stable pass identity, route position and route fingerprint for TrackKin planning.',
   },
 };
 
