@@ -163,6 +163,54 @@ export function serializeTcxCourse({ routeName, segments, routePoints }) {
   ].filter((line) => line !== '').join('\n');
 }
 
+export function serializeTrackKinHandoff({ routeName, fileName, routeDistanceMeters, routePoints }) {
+  const distanceM = Math.round(Number(routeDistanceMeters));
+  if (!Number.isFinite(distanceM) || distanceM <= 0) {
+    throw new Error('Route distance is required for TrackKin export.');
+  }
+  const checkpoints = (routePoints || [])
+    .filter((point) => point?.selected === true)
+    .slice()
+    .sort((a, b) => Number(a.routeKm) - Number(b.routeKm))
+    .map((point) => {
+      const routeDistanceM = Math.round(Number(point.routeKm) * 1000);
+      if (!point.id || !point.name || !Number.isFinite(routeDistanceM)
+          || !Number.isFinite(Number(point.lat)) || !Number.isFinite(Number(point.lon))) {
+        throw new Error('Selected stop is incomplete for TrackKin export.');
+      }
+      const checkpoint = {
+        external_id: String(point.id),
+        name: String(point.name).trim(),
+        lat: Number(point.lat),
+        lon: Number(point.lon),
+        route_distance_m: routeDistanceM,
+        planned_break_minutes: 0,
+      };
+      if (point.categoryId || point.categoryLabel) {
+        checkpoint.category = {
+          id: point.categoryId || null,
+          label: point.categoryLabel || null,
+        };
+      }
+      if (point.description) checkpoint.description = String(point.description);
+      if (point.sourceIdentity) checkpoint.source_identity = point.sourceIdentity;
+      if (point.passIdentity) checkpoint.pass_identity = point.passIdentity;
+      return checkpoint;
+    });
+
+  return JSON.stringify({
+    schema_version: 1,
+    type: 'trackkin_planned_tour_handoff',
+    source: { app: 'Bonkproof' },
+    route: {
+      name: String(routeName || '').trim() || null,
+      source_filename: String(fileName || '').trim() || null,
+      distance_m: distanceM,
+    },
+    checkpoints,
+  }, null, 2);
+}
+
 export function createExportFile(format, context) {
   const baseName = sanitizeExportBaseName(context?.fileName || context?.routeName);
   if (format === 'gpx') {
@@ -181,6 +229,18 @@ export function createExportFile(format, context) {
       }),
       filename: `${baseName}-bonkproof.tcx`,
       mimeType: 'application/vnd.garmin.tcx+xml;charset=utf-8',
+    };
+  }
+  if (format === 'trackkin') {
+    return {
+      content: serializeTrackKinHandoff({
+        routeName: context.routeName,
+        fileName: context.fileName,
+        routeDistanceMeters: context.routeDistanceMeters,
+        routePoints: context.routePoints,
+      }),
+      filename: `${baseName}-trackkin.json`,
+      mimeType: 'application/json;charset=utf-8',
     };
   }
   throw new Error(`Unsupported export format: ${format}`);
