@@ -42,7 +42,7 @@ V1 is implemented as an optional local file handoff rather than a direct service
 4. Select the corresponding GPX in TrackKin and import the handoff into the planned-stop editor.
 5. TrackKin validates the route fingerprint, derives stable internal checkpoint IDs and uses the imported stops with its existing pause/ETA/routebook logic.
 
-The V1 contract includes route distance, stable stop/pass ID, name, coordinates, route position, category and optional descriptive/source metadata. Multiple passes of the same physical POI remain distinguishable. Bonkproof does not contact TrackKin during export.
+The V1 contract includes route distance and GPX point count, stable stop/pass ID, name, coordinates, route position, category and optional descriptive/source metadata. Multiple passes of the same physical POI remain distinguishable. Bonkproof does not contact TrackKin during export.
 
 Later work may return actual reached/skipped stops and pause timing to Bonkproof for post-ride comparison. That remains intentionally separate from the V1 handoff.
 
