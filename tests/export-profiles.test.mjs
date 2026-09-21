@@ -25,8 +25,11 @@ test('initial profiles do not claim confirmed device compatibility', () => {
 test('GPX fallback and TCX course profiles constrain format selection', () => {
   assert.deepEqual(availableExportFormats('gpx-fallback'), ['gpx']);
   assert.deepEqual(availableExportFormats('tcx-course'), ['tcx']);
+  assert.deepEqual(availableExportFormats('trackkin'), ['trackkin']);
   assert.deepEqual(availableExportFormats('missing'), ['gpx', 'tcx']);
+  assert.equal(getExportProfile('trackkin').label, 'TrackKin planned-tour handoff');
   assert.equal(getExportProfile('missing').id, 'generic');
   assert.equal(EXPORT_FORMATS.gpx.label, 'GPX');
   assert.equal(EXPORT_FORMATS.tcx.label, 'TCX');
+  assert.equal(EXPORT_FORMATS.trackkin.label, 'TrackKin JSON');
 });

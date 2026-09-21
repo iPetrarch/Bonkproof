@@ -435,6 +435,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       sourceGpx: currentSourceGpxText,
       fileName: currentRouteFileName,
       routeName: currentParsedRoute.name || currentRouteFileName,
+      routeDistanceMeters: currentRouteDistanceMeters,
+      routePointCount: currentParsedRoute.pointCount,
       segments: currentParsedRoute.segments,
       routePoints,
     });
@@ -504,7 +506,9 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       : (profile.verificationStatus === 'expected' ? 'Expected / not confirmed' : 'Unknown');
 
     exportFilename.textContent = hasRoute
-      ? `${sanitizeExportBaseName(currentRouteFileName || currentParsedRoute.name)}-bonkproof.${formatId}`
+      ? (formatId === 'trackkin'
+        ? `${sanitizeExportBaseName(currentRouteFileName || currentParsedRoute.name)}-trackkin.json`
+        : `${sanitizeExportBaseName(currentRouteFileName || currentParsedRoute.name)}-bonkproof.${formatId}`)
       : '—';
     exportDownload.disabled = !hasRoute;
   }
