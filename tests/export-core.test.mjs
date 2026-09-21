@@ -135,6 +135,7 @@ test('TrackKin handoff exports selected stops with stable pass identity and rout
     routeName: 'Leer nach Hannover',
     fileName: 'leer-hannover.gpx',
     routeDistanceMeters: 235400,
+    routePointCount: 4321,
     routePoints: [second, unselected, selected],
   }));
 
@@ -144,6 +145,7 @@ test('TrackKin handoff exports selected stops with stable pass identity and rout
   assert.equal(payload.route.name, 'Leer nach Hannover');
   assert.equal(payload.route.source_filename, 'leer-hannover.gpx');
   assert.equal(payload.route.distance_m, 235400);
+  assert.equal(payload.route.point_count, 4321);
   assert.equal(payload.checkpoints.length, 2);
   assert.deepEqual(payload.checkpoints.map((entry) => entry.external_id), ['node/1#pass-1', 'node/1#pass-2']);
   assert.deepEqual(payload.checkpoints.map((entry) => entry.route_distance_m), [12300, 80000]);
@@ -157,10 +159,15 @@ test('TrackKin export uses a dedicated json filename and rejects missing route d
     fileName: 'Münster → Leer.gpx',
     routeName: 'Münster nach Leer',
     routeDistanceMeters: 200000,
+    routePointCount: 1234,
     routePoints: [selected],
   });
   assert.equal(file.filename, 'Munster-Leer-trackkin.json');
   assert.equal(file.mimeType, 'application/json;charset=utf-8');
   assert.equal(JSON.parse(file.content).checkpoints.length, 1);
   assert.throws(() => serializeTrackKinHandoff({ routePoints: [selected] }), /Route distance/);
+  assert.throws(() => serializeTrackKinHandoff({
+    routeDistanceMeters: 200000,
+    routePoints: [selected],
+  }), /point count/);
 });
