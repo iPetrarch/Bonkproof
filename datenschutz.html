@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Datenschutzerklärung von Bonkproof.">
+  <title>Datenschutz · Bonkproof</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="legal-page">
+  <main class="legal-shell">
+    <a class="legal-back" href="./index.html">← Zurück zu Bonkproof</a>
+    <p class="eyebrow">Rechtliches</p>
+    <h1>Datenschutzerklärung</h1>
+    <p class="legal-updated">Stand: 22. September 2026</p>
+
+    <section>
+      <h2>1. Verantwortlicher</h2>
+      <p>Arno Ewen<br>Siedlerstraße 6<br>26789 Leer<br>Deutschland</p>
+      <p>E-Mail: <a href="mailto:mail@petrarch.de">mail@petrarch.de</a></p>
+    </section>
+
+    <section>
+      <h2>2. Worum es bei Bonkproof geht</h2>
+      <p>Bonkproof ist eine Webanwendung zur Planung der Verpflegung auf längeren Radtouren. Eine ausgewählte GPX-Datei wird im Browser eingelesen und ausgewertet. Die GPX-Datei selbst wird dabei nicht als Datei an den Bonkproof-Server hochgeladen.</p>
+      <p>Für die Suche nach Versorgungspunkten werden aus der Route räumliche Suchbereiche abgeleitet. Diese Suchbereiche können an den Bonkproof-Server und in bestimmten Fehler- oder Fallbackfällen an einen externen POI-Dienst übertragen werden. Deshalb bedeutet „GPX bleibt im Browser“ nicht, dass bei der POI-Suche keinerlei routenbezogene Daten das Endgerät verlassen.</p>
+    </section>
+
+    <section>
+      <h2>3. Hosting und Server-Protokolle</h2>
+      <p>Bonkproof wird auf Webspace von one.com bereitgestellt. Beim Aufruf einer Webseite müssen technisch Verbindungsdaten verarbeitet werden. Dazu können insbesondere IP-Adresse, Datum und Uhrzeit, angeforderte Ressource, übertragene Datenmenge, Referrer sowie Browser- und Betriebssysteminformationen gehören. Die Verarbeitung dient der sicheren und zuverlässigen Bereitstellung des Angebots.</p>
+      <p>Rechtsgrundlage ist, soweit personenbezogene Daten betroffen sind, Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse liegt im sicheren und technisch funktionsfähigen Betrieb der Website. Die konkrete Aufbewahrungsdauer von Hosting-Protokollen wird nicht durch Bonkproof-Anwendungscode festgelegt und richtet sich nach der Hosting-Konfiguration und den Vorgaben des Hosting-Anbieters.</p>
+      <p>Nach Angaben von one.com werden Daten von EU-Kunden in Rechenzentren in Dänemark innerhalb der Europäischen Union gehostet. Weitere Informationen: <a href="https://help.one.com/hc/de/articles/360000253649-Wie-h%C3%A4lt-one-com-die-DSGVO-ein" rel="noopener noreferrer">Datenschutz-Informationen von one.com</a>.</p>
+    </section>
+
+    <section>
+      <h2>4. GPX-Dateien und Routenverarbeitung</h2>
+      <p>Die vom Nutzer ausgewählte GPX-Datei wird clientseitig im Browser verarbeitet. Bonkproof besitzt derzeit keine Benutzerkonten und speichert die GPX-Datei nicht serverseitig als Tourdatei.</p>
+      <p>Bei der POI-Suche werden aus dem Routenverlauf Suchabschnitte beziehungsweise geografische Begrenzungsrahmen (Bounding Boxes) erzeugt. Diese enthalten keine GPX-Datei, können aber Rückschlüsse auf den räumlichen Verlauf der geplanten Route ermöglichen.</p>
+    </section>
+
+    <section>
+      <h2>5. Versorgungspunkte: lokale Overture-Daten</h2>
+      <p>Unterstützte POI-Abfragen werden bevorzugt über die Bonkproof-eigene Schnittstelle <code>api/places.php</code> verarbeitet. Dabei werden geografische Suchbereiche und die angefragten POI-Kategorien an den Bonkproof-Server übertragen und dort gegen eine lokal vorgehaltene Overture-Places-Datenbank abgefragt. Für diesen normalen Suchweg wird keine Endnutzeranfrage an Overture Maps weitergeleitet.</p>
+      <p>Die serverseitige Overture-Datenbasis wird unabhängig von der Nutzung einzelner Besucher aktualisiert.</p>
+    </section>
+
+    <section>
+      <h2>6. Overpass-Fallback</h2>
+      <p>Kann eine POI-Abfrage nicht über den lokalen Bonkproof-Dienst verarbeitet werden, kann Bonkproof als Fallback die öffentliche Overpass API unter <code>overpass-api.de</code> verwenden. Dabei werden der angefragte geografische Bereich und POI-Kriterien an den externen Dienst übertragen. Durch die direkte Verbindung erhält dessen Betreiber außerdem technisch anfallende Verbindungsdaten wie die IP-Adresse.</p>
+      <p>Der von OpenStreetMap dokumentierte Dienst <code>overpass-api.de</code> wird von FOSSGIS e. V. betrieben. Die Nutzung erfolgt zur Bereitstellung der POI-Suche und zur Aufrechterhaltung der Funktion bei nicht lokal unterstützten Abfragen. Rechtsgrundlage ist, soweit personenbezogene Daten betroffen sind, Art. 6 Abs. 1 lit. f DSGVO. Weitere Informationen finden sich in den <a href="https://osmfoundation.org/wiki/GDPR_Privacy_Statement" rel="noopener noreferrer">Datenschutzinformationen der OpenStreetMap Foundation</a>.</p>
+    </section>
+
+    <section>
+      <h2>7. OpenStreetMap-Kartenkacheln</h2>
+      <p>Die Karte verwendet Raster-Kartenkacheln der OpenStreetMap Foundation (OSMF). Beim Anzeigen und Bewegen der Karte baut der Browser direkte Verbindungen zu <code>tile.openstreetmap.org</code> auf. Dabei können insbesondere IP-Adresse, Browser- und Gerätetyp, Betriebssystem, Referrer sowie Zeitpunkt und angeforderte Ressourcen verarbeitet werden.</p>
+      <p>Die Kartendarstellung ist ein wesentlicher Bestandteil von Bonkproof. Rechtsgrundlage ist, soweit personenbezogene Daten betroffen sind, Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse besteht in einer verständlichen räumlichen Darstellung der geladenen Route und der gefundenen Versorgungspunkte.</p>
+      <p>Weitere Informationen: <a href="https://osmfoundation.org/wiki/GDPR_Privacy_Statement" rel="noopener noreferrer">OSMF-Datenschutzerklärung</a> und <a href="https://operations.osmfoundation.org/policies/tiles/" rel="noopener noreferrer">OSMF Tile Usage Policy</a>.</p>
+    </section>
+
+    <section>
+      <h2>8. Leaflet und externe Programmdateien</h2>
+      <p>Bonkproof lädt derzeit die Kartenbibliothek Leaflet über das Content Delivery Network UNPKG. Dadurch stellt der Browser beim Seitenaufruf eine direkte Verbindung zu <code>unpkg.com</code> her. Dabei fallen technisch notwendige Verbindungsdaten, insbesondere die IP-Adresse, an. Diese Abhängigkeit soll zugunsten einer lokalen Auslieferung der Bibliothek entfallen; bis dahin wird sie hier ausdrücklich offengelegt.</p>
+    </section>
+
+    <section>
+      <h2>9. Exporte und TrackKin</h2>
+      <p>GPX-, TCX- und andere von Bonkproof erzeugte Exporte werden derzeit im Browser erstellt und als Datei zum Download bereitgestellt. Auch der TrackKin-Handoff ist derzeit ein lokaler Dateiexport. Bonkproof überträgt das Routebook nicht direkt an TrackKin.</p>
+      <p>Falls künftig eine direkte Bonkproof-TrackKin-Schnittstelle Daten über das Netzwerk überträgt, wird diese Datenschutzerklärung vor beziehungsweise mit Einführung dieser Funktion erneut geprüft und angepasst.</p>
+    </section>
+
+    <section>
+      <h2>10. Cookies, Local Storage und Analyse</h2>
+      <p>Bonkproof setzt in der derzeitigen Ausbaustufe keine eigenen Analyse- oder Werbetracker ein. Der Anwendungscode verwendet derzeit weder Cookies noch Local Storage oder Session Storage zur Speicherung von Nutzerdaten. Es gibt derzeit auch keine browserseitige Standortabfrage.</p>
+      <p>Aus diesem Grund stellt Bonkproof derzeit kein Cookie- oder Tracking-Einwilligungsbanner bereit. Sollte sich die technische Nutzung von Endgerätespeichern, Tracking oder einwilligungspflichtigen Diensten ändern, wird dies vor Einführung erneut geprüft.</p>
+    </section>
+
+    <section>
+      <h2>11. Speicherdauer</h2>
+      <p>Bonkproof legt derzeit keine Nutzerkonten, GPX-Dateien oder Routebooks dauerhaft auf dem Server ab. Daten, die ausschließlich im Browserzustand der Anwendung gehalten werden, werden nicht als Bonkproof-Nutzerdatensatz auf dem Server gespeichert. Für technisch notwendige Server- und Drittanbieterprotokolle gelten die jeweiligen Aufbewahrungsregeln der beteiligten Anbieter.</p>
+    </section>
+
+    <section>
+      <h2>12. Rechte betroffener Personen</h2>
+      <p>Soweit die gesetzlichen Voraussetzungen vorliegen, bestehen insbesondere Rechte auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Datenübertragbarkeit. Gegen eine Verarbeitung auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO kann aus Gründen, die sich aus der besonderen Situation der betroffenen Person ergeben, Widerspruch eingelegt werden.</p>
+      <p>Außerdem besteht das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu beschweren. Für Niedersachsen ist dies insbesondere die <a href="https://www.lfd.niedersachsen.de/" rel="noopener noreferrer">Landesbeauftragte für den Datenschutz Niedersachsen</a>.</p>
+    </section>
+
+    <section>
+      <h2>13. Änderungen dieser Datenschutzerklärung</h2>
+      <p>Die Erklärung wird angepasst, wenn sich Bonkproof technisch so verändert, dass sich Art, Umfang oder Zweck der Verarbeitung personenbezogener Daten ändern. Das gilt insbesondere für neue externe APIs, direkte TrackKin-Übertragungen, Nutzerkonten, Analytics, Standortfunktionen, Monetarisierung oder Änderungen des Hostings.</p>
+    </section>
+
+    <nav class="legal-nav" aria-label="Rechtliche Informationen">
+      <a href="./impressum.html">Impressum</a>
+      <a href="./index.html">Bonkproof</a>
+    </nav>
+  </main>
+</body>
+</html>
