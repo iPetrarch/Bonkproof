@@ -405,3 +405,75 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 .export-option input { width: 1.1rem; height: 1.1rem; margin-top: 0.1rem; accent-color: var(--ochre-strong); }
 .export-option strong, .export-option small { display: block; }
 .export-option small { margin-top: 0.2rem; color: var(--ink-soft); line-height: 1.4; }
+
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  padding: 0.8rem 1rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--panel-solid);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+.site-footer nav,
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+.site-footer a,
+.legal-page a {
+  color: var(--route-dark);
+  text-underline-offset: 0.16em;
+}
+
+.legal-page {
+  min-height: 100vh;
+  background: var(--paper);
+}
+.legal-shell {
+  width: min(820px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+  line-height: 1.6;
+}
+.legal-shell > h1 {
+  margin-bottom: 0.35rem;
+  font-size: clamp(2rem, 6vw, 3rem);
+}
+.legal-shell section {
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--panel-solid);
+}
+.legal-shell section h2 {
+  font-size: 1.08rem;
+}
+.legal-shell section p:last-child {
+  margin-bottom: 0;
+}
+.legal-back {
+  display: inline-block;
+  margin-bottom: 1.4rem;
+  font-weight: 800;
+}
+.legal-updated {
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+}
+.legal-nav {
+  margin-top: 1.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.legal-shell code {
+  padding: 0.08em 0.28em;
+  border-radius: 0.25rem;
+  background: #ece3d2;
+  overflow-wrap: anywhere;
+}
