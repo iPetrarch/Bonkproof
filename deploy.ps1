@@ -15,11 +15,35 @@ $repoRoot = $PSScriptRoot
 $profilePath = Join-Path $repoRoot "deploy.$Profile.local.ps1"
 $statePath = Join-Path $repoRoot ".deploy-state.$Profile.json"
 
+function Initialize-LeafletAssets {
+    $leafletVersion = '1.9.4'
+    $vendorDirectory = Join-Path $repoRoot 'vendor/leaflet'
+    $assets = @{
+        'leaflet.js' = "https://unpkg.com/leaflet@$leafletVersion/dist/leaflet.js"
+        'leaflet.css' = "https://unpkg.com/leaflet@$leafletVersion/dist/leaflet.css"
+        'LICENSE' = "https://unpkg.com/leaflet@$leafletVersion/LICENSE"
+    }
+
+    New-Item -ItemType Directory -Path $vendorDirectory -Force | Out-Null
+    foreach ($asset in $assets.GetEnumerator()) {
+        $target = Join-Path $vendorDirectory $asset.Key
+        if (-not (Test-Path -LiteralPath $target)) {
+            Write-Host "Preparing local Leaflet asset $($asset.Key)..."
+            Invoke-WebRequest -Uri $asset.Value -OutFile $target -UseBasicParsing
+        }
+    }
+}
+
+Initialize-LeafletAssets
+
 $publishFiles = @(
     'index.html',
     'impressum.html',
     'datenschutz.html',
     'styles.css',
+    'vendor/leaflet/leaflet.js',
+    'vendor/leaflet/leaflet.css',
+    'vendor/leaflet/LICENSE',
     'app.js',
     'export-model.js',
     'export-core.js',
