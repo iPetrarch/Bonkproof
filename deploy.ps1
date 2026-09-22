@@ -17,6 +17,8 @@ $statePath = Join-Path $repoRoot ".deploy-state.$Profile.json"
 
 $publishFiles = @(
     'index.html',
+    'impressum.html',
+    'datenschutz.html',
     'styles.css',
     'app.js',
     'export-model.js',
