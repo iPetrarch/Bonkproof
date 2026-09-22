@@ -23,6 +23,16 @@ jobs:
         with:
           node-version: 22
 
+      - name: Prepare local Leaflet assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --ignore-scripts leaflet@1.9.4
+          mkdir -p vendor/leaflet
+          cp node_modules/leaflet/dist/leaflet.js vendor/leaflet/leaflet.js
+          cp node_modules/leaflet/dist/leaflet.css vendor/leaflet/leaflet.css
+          cp node_modules/leaflet/LICENSE vendor/leaflet/LICENSE
+
       - name: Run regression tests
         run: npm test
 
@@ -117,6 +127,11 @@ jobs:
           put impressum.html
           put datenschutz.html
           put styles.css
+          -mkdir vendor
+          -mkdir vendor/leaflet
+          put vendor/leaflet/leaflet.js vendor/leaflet/leaflet.js
+          put vendor/leaflet/leaflet.css vendor/leaflet/leaflet.css
+          put vendor/leaflet/LICENSE vendor/leaflet/LICENSE
           put app.js
           put export-model.js
           put export-core.js
