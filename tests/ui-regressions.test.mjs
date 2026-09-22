@@ -5,16 +5,52 @@ import { buildFoundPoiWarnings, buildRoutebook, buildRoutebookWarnings, extractR
 import { buildPoiQuerySections, fetchPoiSectionWithRetry, isRetryablePoiStatus, paginatePois, retryAfterMilliseconds, splitPoiQuerySection } from '../poi-search.js';
 import { clusterAccessibleLabel, clusterCategoryCounts, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX } from '../poi-clustering.js';
 
-const [rawApp, rawStyles, rawDeploy, rawIndex] = await Promise.all([
+const [rawApp, rawStyles, rawDeploy, rawIndex, rawImprint, rawPrivacy, rawGithubDeploy] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../deploy.ps1', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
+  readFile(new URL('../impressum.html', import.meta.url), 'utf8'),
+  readFile(new URL('../datenschutz.html', import.meta.url), 'utf8'),
+  readFile(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8'),
 ]);
 const app = rawApp.replaceAll('\r\n', '\n');
 const styles = rawStyles.replaceAll('\r\n', '\n');
 const deploy = rawDeploy.replaceAll('\r\n', '\n');
 const index = rawIndex.replaceAll('\r\n', '\n');
+const imprint = rawImprint.replaceAll('\r\n', '\n');
+const privacy = rawPrivacy.replaceAll('\r\n', '\n');
+const githubDeploy = rawGithubDeploy.replaceAll('\r\n', '\n');
+
+
+test('legal pages are linked from the app and included in both deployment paths', () => {
+  assert.match(index, /href="\.\/impressum\.html">Impressum<\/a>/);
+  assert.match(index, /href="\.\/datenschutz\.html">Datenschutz<\/a>/);
+  assert.match(deploy, /'impressum\.html'/);
+  assert.match(deploy, /'datenschutz\.html'/);
+  assert.match(githubDeploy, /put impressum\.html/);
+  assert.match(githubDeploy, /put datenschutz\.html/);
+});
+
+test('imprint contains provider details without claiming an exclusive Leer jurisdiction', () => {
+  assert.match(imprint, /Arno Ewen/);
+  assert.match(imprint, /Siedlerstraße 6/);
+  assert.match(imprint, /26789 Leer/);
+  assert.match(imprint, /mail@petrarch\.de/);
+  assert.match(imprint, /gesetzlichen Gerichtsstandsregelungen/);
+  assert.doesNotMatch(imprint, /ausschließlicher Gerichtsstand(?: ist)? Leer/i);
+});
+
+test('privacy page documents the current data flows and future review triggers', () => {
+  assert.match(privacy, /GPX-Datei selbst wird dabei nicht als Datei an den Bonkproof-Server hochgeladen/);
+  assert.match(privacy, /api\/places\.php/);
+  assert.match(privacy, /overpass-api\.de/);
+  assert.match(privacy, /tile\.openstreetmap\.org/);
+  assert.match(privacy, /unpkg\.com/);
+  assert.match(privacy, /TrackKin-Handoff ist derzeit ein lokaler Dateiexport/);
+  assert.match(privacy, /weder Cookies noch Local Storage oder Session Storage/);
+  assert.match(privacy, /direkte Bonkproof-TrackKin-Schnittstelle/);
+});
 
 test('a rendered route hides the GPX import overlay', () => {
   assert.match(app, /function renderRoute\(parsed, fileName, sourceGpxText\)[\s\S]*?dropZone\.hidden = true;/);
