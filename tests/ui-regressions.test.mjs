@@ -30,6 +30,10 @@ test('legal pages are linked from the app and included in both deployment paths'
   assert.match(deploy, /'datenschutz\.html'/);
   assert.match(githubDeploy, /put impressum\.html/);
   assert.match(githubDeploy, /put datenschutz\.html/);
+  assert.match(deploy, /'vendor\/leaflet\/leaflet\.js'/);
+  assert.match(deploy, /'vendor\/leaflet\/leaflet\.css'/);
+  assert.match(githubDeploy, /leaflet@1\.9\.4/);
+  assert.match(githubDeploy, /put vendor\/leaflet\/leaflet\.js/);
 });
 
 test('imprint contains provider details without claiming an exclusive Leer jurisdiction', () => {
@@ -46,7 +50,11 @@ test('privacy page documents the current data flows and future review triggers',
   assert.match(privacy, /api\/places\.php/);
   assert.match(privacy, /overpass-api\.de/);
   assert.match(privacy, /tile\.openstreetmap\.org/);
-  assert.match(privacy, /unpkg\.com/);
+  assert.match(index, /vendor\/leaflet\/leaflet\.css/);
+  assert.match(index, /vendor\/leaflet\/leaflet\.js/);
+  assert.doesNotMatch(index, /unpkg\.com/);
+  assert.match(privacy, /Leaflet wird von Bonkproof lokal ausgeliefert/);
+  assert.doesNotMatch(privacy, /unpkg\.com/);
   assert.match(privacy, /TrackKin-Handoff ist derzeit ein lokaler Dateiexport/);
   assert.match(privacy, /weder Cookies noch Local Storage oder Session Storage/);
   assert.match(privacy, /direkte Bonkproof-TrackKin-Schnittstelle/);
