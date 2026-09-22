@@ -114,6 +114,8 @@ jobs:
           -mkdir $remote
           cd $remote
           put index.html
+          put impressum.html
+          put datenschutz.html
           put styles.css
           put app.js
           put export-model.js
