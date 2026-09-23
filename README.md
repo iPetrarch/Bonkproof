@@ -53,7 +53,13 @@ See [`docs/overture-local.md`](docs/overture-local.md) for import and server set
 
 The export view includes a **TrackKin planned-tour handoff** target. It writes the selected routebook stops to a small versioned JSON file containing the route distance and GPX point count as a route fingerprint, stable stop/pass identifiers, route positions, coordinates and optional category/source metadata. Repeated passes of the same physical POI remain distinct.
 
-The handoff is a local browser download. Bonkproof does not send it to TrackKin. In TrackKin, the rider selects the corresponding GPX separately and imports the JSON into the existing planned-stop editor, where fixed pause durations can be added or changed.
+The handoff is a local browser download. Bonkproof does not send it to TrackKin. In TrackKin, the rider selects the corresponding GPX separately and imports the JSON into the existing planned-stop editor, where fixed pause durations can be added or changed. Before download, Bonkproof applies the same V1 limits that TrackKin enforces on import: at most 50 selected stops, bounded names/IDs and coordinates, route positions within the route, and unique integer-metre stop positions.
+
+### Interface maintenance rule
+
+The TrackKin handoff is a shared contract across both repositories. Whenever Bonkproof changes anything that affects the handoff — including schema fields, schema versions, validation rules, limits, route fingerprinting, stop/pass identity, route-position semantics, pause handling, export behaviour or compatibility assumptions — the corresponding TrackKin implementation and documentation must be reviewed in the same development step.
+
+A Bonkproof interface change is not considered complete until it has been checked whether TrackKin requires a matching code, test or documentation change. TrackKin documents the same reciprocal rule. If no counterpart change is required, that conclusion should still be recorded in the change review or pull request.
 
 ## External services, data and privacy
 
