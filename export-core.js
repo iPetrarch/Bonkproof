@@ -172,35 +172,53 @@ export function serializeTrackKinHandoff({ routeName, fileName, routeDistanceMet
   if (!Number.isInteger(pointCount) || pointCount < 2) {
     throw new Error('Route point count is required for TrackKin export.');
   }
-  const checkpoints = (routePoints || [])
+  const selected = (routePoints || [])
     .filter((point) => point?.selected === true)
     .slice()
-    .sort((a, b) => Number(a.routeKm) - Number(b.routeKm))
-    .map((point) => {
-      const routeDistanceM = Math.round(Number(point.routeKm) * 1000);
-      if (!point.id || !point.name || !Number.isFinite(routeDistanceM)
-          || !Number.isFinite(Number(point.lat)) || !Number.isFinite(Number(point.lon))) {
-        throw new Error('Selected stop is incomplete for TrackKin export.');
-      }
-      const checkpoint = {
-        external_id: String(point.id),
-        name: String(point.name).trim(),
-        lat: Number(point.lat),
-        lon: Number(point.lon),
-        route_distance_m: routeDistanceM,
-        planned_break_minutes: 0,
+    .sort((a, b) => Number(a.routeKm) - Number(b.routeKm));
+  if (selected.length > 50) {
+    throw new Error('TrackKin export supports at most 50 selected stops.');
+  }
+
+  const usedDistances = new Set();
+  const checkpoints = selected.map((point) => {
+    const externalId = String(point?.id ?? '').trim();
+    const name = String(point?.name ?? '').trim();
+    const routeDistanceM = Math.round(Number(point?.routeKm) * 1000);
+    const lat = Number(point?.lat);
+    const lon = Number(point?.lon);
+
+    if (externalId === '' || externalId.length > 300
+        || name === '' || name.length > 160
+        || !Number.isFinite(routeDistanceM) || routeDistanceM < 0 || routeDistanceM > distanceM
+        || !Number.isFinite(lat) || lat < -90 || lat > 90
+        || !Number.isFinite(lon) || lon < -180 || lon > 180) {
+      throw new Error('Selected stop is invalid for TrackKin export.');
+    }
+    if (usedDistances.has(routeDistanceM)) {
+      throw new Error('TrackKin export requires unique stop positions.');
+    }
+    usedDistances.add(routeDistanceM);
+
+    const checkpoint = {
+      external_id: externalId,
+      name,
+      lat,
+      lon,
+      route_distance_m: routeDistanceM,
+      planned_break_minutes: 0,
+    };
+    if (point.categoryId || point.categoryLabel) {
+      checkpoint.category = {
+        id: point.categoryId || null,
+        label: point.categoryLabel || null,
       };
-      if (point.categoryId || point.categoryLabel) {
-        checkpoint.category = {
-          id: point.categoryId || null,
-          label: point.categoryLabel || null,
-        };
-      }
-      if (point.description) checkpoint.description = String(point.description);
-      if (point.sourceIdentity) checkpoint.source_identity = point.sourceIdentity;
-      if (point.passIdentity) checkpoint.pass_identity = point.passIdentity;
-      return checkpoint;
-    });
+    }
+    if (point.description) checkpoint.description = String(point.description);
+    if (point.sourceIdentity) checkpoint.source_identity = point.sourceIdentity;
+    if (point.passIdentity) checkpoint.pass_identity = point.passIdentity;
+    return checkpoint;
+  });
 
   return JSON.stringify({
     schema_version: 1,
