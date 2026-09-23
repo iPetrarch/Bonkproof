@@ -171,3 +171,55 @@ test('TrackKin export uses a dedicated json filename and rejects missing route d
     routePoints: [selected],
   }), /point count/);
 });
+
+test('TrackKin handoff mirrors TrackKin import limits before download', () => {
+  const base = {
+    ...selected,
+    id: ' node/1#pass-1 ',
+    name: ' Valid stop ',
+  };
+  const payload = JSON.parse(serializeTrackKinHandoff({
+    routeDistanceMeters: 100000,
+    routePointCount: 1000,
+    routePoints: [base],
+  }));
+  assert.equal(payload.checkpoints[0].external_id, 'node/1#pass-1');
+  assert.equal(payload.checkpoints[0].name, 'Valid stop');
+
+  assert.throws(() => serializeTrackKinHandoff({
+    routeDistanceMeters: 100000,
+    routePointCount: 1000,
+    routePoints: Array.from({ length: 51 }, (_, index) => ({
+      ...selected,
+      id: `node/${index}#pass-1`,
+      routeKm: index + 1,
+    })),
+  }), /at most 50/);
+
+  assert.throws(() => serializeTrackKinHandoff({
+    routeDistanceMeters: 100000,
+    routePointCount: 1000,
+    routePoints: [
+      { ...selected, id: 'node/1#pass-1', routeKm: 12.3001 },
+      { ...selected, id: 'node/2#pass-1', routeKm: 12.3004 },
+    ],
+  }), /unique stop positions/);
+
+  assert.throws(() => serializeTrackKinHandoff({
+    routeDistanceMeters: 100000,
+    routePointCount: 1000,
+    routePoints: [{ ...selected, routeKm: 101 }],
+  }), /invalid for TrackKin export/);
+
+  assert.throws(() => serializeTrackKinHandoff({
+    routeDistanceMeters: 100000,
+    routePointCount: 1000,
+    routePoints: [{ ...selected, lat: 91 }],
+  }), /invalid for TrackKin export/);
+
+  assert.throws(() => serializeTrackKinHandoff({
+    routeDistanceMeters: 100000,
+    routePointCount: 1000,
+    routePoints: [{ ...selected, name: '   ' }],
+  }), /invalid for TrackKin export/);
+});
