@@ -71,12 +71,12 @@ The web app still uses these external services:
 
 - **OpenStreetMap data / Overpass API:** temporary fallback POI searches may be sent to the public Overpass endpoint at `overpass-api.de` if the local Overture database is unavailable or a query cannot be represented by the local provider.
 - **OpenStreetMap raster tiles:** the map loads tiles from OpenStreetMap infrastructure. As with normal web requests, the tile service can receive the user's IP address and standard HTTP request metadata.
-- **Leaflet via unpkg:** Leaflet JavaScript and CSS are currently loaded from `unpkg.com`, so opening the app also causes requests to that CDN.
+- **Leaflet:** Leaflet JavaScript and CSS are delivered locally by Bonkproof and do not require a browser request to an external CDN.
 - **Overture Maps data download:** the monthly server-side import reads Overture Places GeoParquet from Overture's public cloud distribution. End users do not contact Overture during normal POI lookup.
 
 The public OpenStreetMap tile servers and public Overpass instances are shared community infrastructure, not guaranteed application backends. Bonkproof should keep fallback requests bounded and conservative, handle rate limits and temporary failures, and avoid bulk tile downloading or prefetching.
 
-Before public production use, the site's privacy information should describe the local POI API, possible Overpass fallback, OpenStreetMap tile requests and unpkg dependency. Hosting or replacing these external dependencies may change that disclosure requirement.
+The site's privacy information should describe the local POI API, possible Overpass fallback and OpenStreetMap tile requests. Hosting or replacing external dependencies may change that disclosure requirement.
 
 ## Status
 
