@@ -53,7 +53,7 @@ See [`docs/overture-local.md`](docs/overture-local.md) for import and server set
 
 The export view includes a **TrackKin planned-tour handoff** target. It writes the selected routebook stops to a small versioned JSON file containing the route distance and GPX point count as a route fingerprint, stable stop/pass identifiers, route positions, coordinates and optional category/source metadata. Repeated passes of the same physical POI remain distinct.
 
-The handoff is a local browser download. Bonkproof does not send it to TrackKin. In TrackKin, the rider selects the corresponding GPX separately and imports the JSON into the existing planned-stop editor, where fixed pause durations can be added or changed. Before download, Bonkproof applies the same V1 limits that TrackKin enforces on import: at most 50 selected stops, bounded names/IDs and coordinates, route positions within the route, and unique integer-metre stop positions.
+The handoff is a local browser download. Bonkproof does not send it to TrackKin. Bonkproof currently stops at that local JSON download. The corresponding TrackKin importer is not yet available on TrackKin `main`, so the handoff cannot currently be completed end-to-end there. Before download, Bonkproof already validates the intended V1 limits: at most 50 selected stops, bounded names/IDs and coordinates, route positions within the route, and unique integer-metre stop positions.
 
 ### Interface maintenance rule
 
