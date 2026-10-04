@@ -3,7 +3,7 @@ import { buildPoiQuerySections, createPoiQueryWorkloads, fetchPoiSectionWithRetr
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
 import { buildPoiPassIndex } from './poi-pass-index.js';
-import { buildActiveCategories, buildOverpassQuery, defaultCategoryRadii, defaultEnabledCategoryIds, getGraceMeters, matchingCategory } from './poi-config.js';
+import { buildActiveCategories, buildOverpassQuery, categoryRadiusIsLoaded, defaultCategoryRadii, defaultEnabledCategoryIds, effectivePoiState, getGraceMeters, matchingCategory, poiInsideEffectiveCorridor } from './poi-config.js';
 import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resupply-profile.js';
 import { buildRoutePointSnapshots } from './export-model.js';
 import { createExportFile, downloadExportFile, sanitizeExportBaseName } from './export-core.js';
@@ -56,6 +56,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   const poiWarningSummary = document.getElementById('poi-warning-summary');
   const poiWarningList = document.getElementById('poi-warning-list');
   const reloadPois = document.getElementById('reload-pois');
+  const iceToggle = document.getElementById('ice-toggle');
+  const iceStatus = document.getElementById('ice-status');
   const gapCriticalKm = document.getElementById('gap-critical-km');
   const gapInfoPercent = document.getElementById('gap-info-percent');
   const gapWarningPercent = document.getElementById('gap-warning-percent');
@@ -101,6 +103,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   let poiPage = 1;
   let activeCategoryIds = new Set(INITIAL_CATEGORY_IDS);
   let loadedCategoryRadii = new Map();
+  let iceActive = false;
   let activeTab = 'pois';
   let gapSettings = { ...DEFAULT_GAP_SETTINGS };
   const poiMarkers = new Map();
@@ -181,6 +184,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     activeCategoryIds = poiConfig ? defaultEnabledCategoryIds(poiConfig) : new Set(INITIAL_CATEGORY_IDS);
     categoryRadiusOverrides = poiConfig ? defaultCategoryRadii(poiConfig) : new Map();
     loadedCategoryRadii = new Map();
+    iceActive = false;
+    renderIceControl();
     if (poiConfig) renderCategoryControls(poiConfig);
   }
 
@@ -516,11 +521,40 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     exportDownload.disabled = !hasRoute;
   }
 
+  function currentEffectivePoiState() {
+    return effectivePoiState(
+      poiConfig,
+      activeCategoryIds,
+      categoryRadiusOverrides,
+      iceActive ? poiConfig?.presets?.ice : null,
+    );
+  }
+
+  function effectiveCategoryRadiusMeters(categoryId) {
+    const state = currentEffectivePoiState();
+    const configured = poiConfig?.categories.find((category) => category.id === categoryId);
+    return Number(state.radiusOverrides.get(categoryId) ?? configured?.defaultRadiusM ?? 0);
+  }
+
+  function renderIceControl() {
+    const preset = poiConfig?.presets?.ice;
+    iceToggle.hidden = !preset;
+    iceToggle.classList.toggle('is-active', iceActive);
+    iceToggle.setAttribute('aria-pressed', String(iceActive));
+    iceToggle.textContent = iceActive ? 'ICE-Modus beenden' : (preset?.label || 'ICE — In Case of Emergency');
+    iceStatus.hidden = !iceActive;
+    iceStatus.textContent = iceActive
+      ? 'Temporärer Suchmodus aktiv: zusätzliche Kategorien und größere Suchradien. Deine normalen Einstellungen bleiben unverändert. Keine Sicherheits- oder Versorgungsgarantie.'
+      : '';
+  }
+
   function renderCategoryControls(config) {
     poiCategories.innerHTML = '';
     config.categories.forEach((category) => {
-      const active = activeCategoryIds.has(category.id);
+      const effectiveState = currentEffectivePoiState();
+      const active = effectiveState.enabledIds.has(category.id);
       const radiusM = categoryRadiusOverrides.get(category.id) ?? category.defaultRadiusM;
+      const effectiveRadiusM = effectiveState.radiusOverrides.get(category.id) ?? radiusM;
       const row = document.createElement('div');
       row.className = `category-row ${active ? '' : 'is-inactive'}`;
       row.dataset.category = category.id;
@@ -530,7 +564,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
           <span class="category-copy"><strong>${escapeHtml(category.label)}</strong><small>${escapeHtml(category.group || 'other')}</small></span>
           <span class="category-count" data-category-count="${escapeHtml(category.id)}">0</span>
         </button>
-        <label class="category-radius"><span>Radius</span><span><input type="number" min="50" max="20000" step="50" value="${radiusM}" data-category-radius="${escapeHtml(category.id)}"> m</span></label>
+        <label class="category-radius"><span>Radius${iceActive && effectiveRadiusM > radiusM ? ` · ICE ${effectiveRadiusM} m` : ''}</span><span><input type="number" min="50" max="20000" step="50" value="${radiusM}" data-category-radius="${escapeHtml(category.id)}"> m</span></label>
       `;
       poiCategories.appendChild(row);
     });
@@ -594,8 +628,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   }
 
   function categoryIsLoaded(categoryId) {
-    const radiusM = categoryRadiusMeters(categoryId);
-    return Number.isFinite(radiusM) && loadedCategoryRadii.get(categoryId) === radiusM;
+    const radiusM = effectiveCategoryRadiusMeters(categoryId);
+    return categoryRadiusIsLoaded(loadedCategoryRadii.get(categoryId), radiusM);
   }
 
   async function fetchOsmCandidates(categories, section, config, signal) {
@@ -958,8 +992,15 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     poiPassIndex = buildPoiPassIndex(pois, physicalPoiKey);
     currentPois = pois;
     currentCategories = categories;
+    const effectiveState = currentEffectivePoiState();
     const visiblePois = pois
-      .filter((poi) => activeCategoryIds.has(poi.category.id) || pinnedPoiIds.has(poiKey(poi)))
+      .filter((poi) => {
+        if (pinnedPoiIds.has(poiKey(poi)) || selectedPoiIds.has(poiKey(poi))) return true;
+        if (!effectiveState.enabledIds.has(poi.category.id)) return false;
+        const configured = poiConfig?.categories.find((category) => category.id === poi.category.id) || poi.category;
+        const radiusM = effectiveState.radiusOverrides.get(poi.category.id) ?? configured.defaultRadiusM;
+        return poiInsideEffectiveCorridor(poi, radiusM, getGraceMeters({ ...configured, radiusM }, poiConfig));
+      })
       .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
     const page = paginatePois(visiblePois, poiPage);
     poiPage = page.page;
@@ -978,7 +1019,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     poiLegend.hidden = false;
 
     poiCategories.querySelectorAll('.category-row').forEach((row) => {
-      const active = activeCategoryIds.has(row.dataset.category);
+      const active = effectiveState.enabledIds.has(row.dataset.category);
       row.classList.toggle('is-inactive', !active);
       row.querySelector('.category-toggle')?.setAttribute('aria-pressed', String(active));
     });
@@ -1055,8 +1096,9 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       const [config] = await Promise.all([getPoiConfig(), getResupplyProfile()]);
       if (signal.aborted) return;
 
-      const queryCategoryIds = incremental ? new Set(requestedCategoryIds) : activeCategoryIds;
-      const categories = buildActiveCategories(config, queryCategoryIds, categoryRadiusOverrides);
+      const effectiveState = currentEffectivePoiState();
+      const queryCategoryIds = incremental ? new Set(requestedCategoryIds) : effectiveState.enabledIds;
+      const categories = buildActiveCategories(config, queryCategoryIds, effectiveState.radiusOverrides);
       poiCategories.hidden = false;
       if (categories.length === 0) {
         failedPoiSections = [];
@@ -1146,7 +1188,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       pinnedPoiIds = new Set([...pinnedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
       failedPoiSections = incremental ? [...previousUnrelatedFailures, ...failedWorkloads] : failedWorkloads;
       if (failedWorkloads.length === 0) {
-        categories.forEach((category) => loadedCategoryRadii.set(category.id, category.radiusM));
+        categories.forEach((category) => loadedCategoryRadii.set(category.id, Math.max(loadedCategoryRadii.get(category.id) || 0, category.radiusM)));
       } else {
         categories.forEach((category) => loadedCategoryRadii.delete(category.id));
       }
@@ -1188,6 +1230,29 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   replaceRoute.addEventListener('click', () => fileInput.click());
   reloadPois.addEventListener('click', () => currentParsedRoute && loadPois(currentParsedRoute, true, failedPoiSections.length > 0));
   gapSettingInputs.forEach((input) => input.addEventListener('input', applyGapSettingsFromInputs));
+  iceToggle.addEventListener('click', () => {
+    const preset = poiConfig?.presets?.ice;
+    if (!preset || poiSearchRunning) return;
+    iceActive = !iceActive;
+    poiPage = 1;
+    renderIceControl();
+    renderCategoryControls(poiConfig);
+    if (!currentParsedRoute) {
+      renderPois(currentPois, currentCategories);
+      return;
+    }
+    if (!iceActive) {
+      renderPois(currentPois, currentCategories);
+      renderWarnings();
+      renderWarningLayer();
+      return;
+    }
+    const effectiveState = currentEffectivePoiState();
+    const affected = Object.keys(preset.radiusOverridesM || {})
+      .filter((categoryId) => effectiveState.enabledIds.has(categoryId) && !categoryIsLoaded(categoryId));
+    if (affected.length > 0) loadPois(currentParsedRoute, true, false, affected, affected);
+    else renderPois(currentPois, currentCategories);
+  });
   poiCategories.addEventListener('click', (event) => {
     const button = event.target.closest('[data-category-toggle]');
     if (!button) return;
@@ -1218,8 +1283,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     }
     categoryRadiusOverrides.set(categoryId, radiusM);
     if (radiusM === previousRadiusM) return;
-    loadedCategoryRadii.delete(categoryId);
-    if (activeCategoryIds.has(categoryId) && currentParsedRoute) {
+    const effectiveState = currentEffectivePoiState();
+    if (effectiveState.enabledIds.has(categoryId) && currentParsedRoute && !categoryIsLoaded(categoryId)) {
       loadPois(currentParsedRoute, true, false, [categoryId], [categoryId]);
     }
   });

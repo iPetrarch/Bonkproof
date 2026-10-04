@@ -19,11 +19,10 @@ test('enabling a category fetches only an uncached category', () => {
   assert.doesNotMatch(block, /loadPois\(currentParsedRoute, true, false\);/);
 });
 
-test('radius changes invalidate and replace only the affected category', () => {
+test('radius changes reuse sufficient coverage and replace only when more coverage is needed', () => {
   const block = between("poiCategories.addEventListener('change'", "poiPrevious.addEventListener");
-  const invalidation = block.indexOf('loadedCategoryRadii.delete(categoryId)');
-  const activeGuard = block.indexOf('if (activeCategoryIds.has(categoryId)');
-  assert.ok(invalidation >= 0 && invalidation < activeGuard, 'cache must be invalidated before checking whether category is active');
+  assert.match(block, /!categoryIsLoaded\(categoryId\)/);
+  assert.doesNotMatch(block, /loadedCategoryRadii\.delete\(categoryId\)/);
   assert.match(block, /loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
 });
 
@@ -42,9 +41,9 @@ test('only confirmed local Overture responses skip legacy pacing', () => {
 
 test('loaded category cache is radius-aware and resets with route view state', () => {
   assert.match(app, /let loadedCategoryRadii = new Map\(\)/);
-  assert.match(app, /loadedCategoryRadii\.get\(categoryId\) === radiusM/);
+  assert.match(app, /categoryRadiusIsLoaded\(loadedCategoryRadii\.get\(categoryId\), radiusM\)/);
   assert.match(app, /loadedCategoryRadii = new Map\(\)/);
-  assert.match(app, /loadedCategoryRadii\.set\(category\.id, category\.radiusM\)/);
+  assert.match(app, /loadedCategoryRadii\.set\(category\.id, Math\.max\(loadedCategoryRadii\.get\(category\.id\) \|\| 0, category\.radiusM\)\)/);
 });
 
 test('successful radius replacement removes stale POIs only after the targeted request completes', () => {
