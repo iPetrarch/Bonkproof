@@ -34,7 +34,7 @@ This roadmap describes direction, not promises. Bonkproof will evolve in small, 
 
 ### TrackKin integration — planned tour handoff
 
-V1 is implemented as an optional local file handoff rather than a direct service dependency:
+Bonkproof's V1 export side is implemented as an optional local file handoff rather than a direct service dependency. TrackKin does not yet provide the matching importer on `main`, so steps 4–5 describe the intended end-to-end flow, not a currently completed integration:
 
 1. Load and analyse a GPX route in Bonkproof.
 2. Select planned resupply or other routebook stops.
