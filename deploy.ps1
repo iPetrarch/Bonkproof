@@ -51,7 +51,7 @@ $publishFiles = @(
     'export-gap-warnings.js',
     'routebook.js',
     'poi-search.js',
-    'poi-projection.js',
+    'poi-projection.js', 'poi-pass-index.js',
     'poi-clustering.js',
     'poi-config.js',
     'poi-provider-overture.js',
