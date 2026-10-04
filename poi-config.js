@@ -91,3 +91,27 @@ export function getGraceMeters(category, config) {
     Math.max(Number(softEdge.minimumGraceM) || 0, radiusM * (Number(softEdge.percentage) || 0)),
   );
 }
+
+export function effectivePoiState(config, enabledIds, radiusOverrides = new Map(), preset = null) {
+  const enabled = new Set(enabledIds || []);
+  const radii = new Map(radiusOverrides || []);
+  const presetRadii = preset?.radiusOverridesM || {};
+  Object.entries(presetRadii).forEach(([categoryId, radiusM]) => {
+    enabled.add(categoryId);
+    const category = (config?.categories || []).find((candidate) => candidate.id === categoryId);
+    const normalRadius = normalizeCategoryRadius(category, radii.get(categoryId));
+    radii.set(categoryId, Math.max(normalRadius, normalizeCategoryRadius(category, radiusM)));
+  });
+  return { enabledIds: enabled, radiusOverrides: radii };
+}
+
+export function poiInsideEffectiveCorridor(poi, effectiveRadiusM, graceM = 0) {
+  if (!poi || !Number.isFinite(Number(effectiveRadiusM))) return false;
+  return Number(poi.offRouteM) <= Number(effectiveRadiusM) + Number(graceM || 0);
+}
+
+export function categoryRadiusIsLoaded(loadedRadiusM, requestedRadiusM) {
+  return Number.isFinite(Number(loadedRadiusM))
+    && Number.isFinite(Number(requestedRadiusM))
+    && Number(loadedRadiusM) >= Number(requestedRadiusM);
+}

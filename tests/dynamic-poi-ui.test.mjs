@@ -29,15 +29,16 @@ test('all configured categories are rendered dynamically and remain independentl
 test('category radii are editable and feed the active Overpass search configuration', () => {
   assert.match(app, /data-category-radius/);
   assert.match(app, /categoryRadiusOverrides\.set\(categoryId, radiusM\)/);
-  assert.match(app, /const queryCategoryIds = incremental \? new Set\(requestedCategoryIds\) : activeCategoryIds/);
-  assert.match(app, /buildActiveCategories\(config, queryCategoryIds, categoryRadiusOverrides\)/);
+  assert.match(app, /const effectiveState = currentEffectivePoiState\(\)/);
+  assert.match(app, /const queryCategoryIds = incremental \? new Set\(requestedCategoryIds\) : effectiveState\.enabledIds/);
+  assert.match(app, /buildActiveCategories\(config, queryCategoryIds, effectiveState\.radiusOverrides\)/);
   assert.match(app, /category\.radiusM \+ getGraceMeters\(category, config\)/);
   assert.match(app, /const hardLimitM = category\.radiusM/);
 });
 
 test('enabling a new category or changing an active radius refreshes the POI search', () => {
   assert.match(app, /if \(enabling && currentParsedRoute && !categoryIsLoaded\(categoryId\)\) \{\s*loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
-  assert.match(app, /loadedCategoryRadii\.delete\(categoryId\)[\s\S]*?if \(activeCategoryIds\.has\(categoryId\) && currentParsedRoute\) \{\s*loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
+  assert.match(app, /if \(effectiveState\.enabledIds\.has\(categoryId\) && currentParsedRoute && !categoryIsLoaded\(categoryId\)\) \{\s*loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
 });
 
 test('supply warnings only use active reliable resupply categories', () => {
