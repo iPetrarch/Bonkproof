@@ -2,6 +2,7 @@ import { DEFAULT_GAP_SETTINGS, buildFoundPoiWarnings, buildGapThresholds, buildR
 import { buildPoiQuerySections, createPoiQueryWorkloads, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQueryWorkload } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
+import { buildPoiPassIndex } from './poi-pass-index.js';
 import { buildActiveCategories, buildOverpassQuery, defaultCategoryRadii, defaultEnabledCategoryIds, getGraceMeters, matchingCategory } from './poi-config.js';
 import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resupply-profile.js';
 import { buildRoutePointSnapshots } from './export-model.js';
@@ -103,6 +104,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   let activeTab = 'pois';
   let gapSettings = { ...DEFAULT_GAP_SETTINGS };
   const poiMarkers = new Map();
+  let poiPassIndex = new Map();
 
   function showError(message) {
     clearTimeout(errorTimer);
@@ -141,6 +143,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     poiMarkers.clear();
     currentPois = [];
     currentCategories = [];
+    poiPassIndex = new Map();
     poiPage = 1;
     poiCategories.hidden = true;
     poiLegend.hidden = true;
@@ -669,9 +672,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
 
   function physicalPassesFor(poi) {
     const physicalId = poi.physicalPoiId || physicalPoiKey(poi);
-    return currentPois
-      .filter((candidate) => (candidate.physicalPoiId || physicalPoiKey(candidate)) === physicalId)
-      .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+    return poiPassIndex.get(physicalId) || [];
   }
 
   function nextPassBy(poi) {
@@ -954,6 +955,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   }
 
   function renderPois(pois, categories) {
+    poiPassIndex = buildPoiPassIndex(pois, physicalPoiKey);
     currentPois = pois;
     currentCategories = categories;
     const visiblePois = pois
