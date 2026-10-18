@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { categoryRadiusIsLoaded, effectivePoiState, poiInsideEffectiveCorridor } from '../poi-config.js';
 
 const config = {
@@ -34,4 +35,11 @@ test('larger loaded coverage satisfies a smaller radius and corridor filtering s
   assert.equal(categoryRadiusIsLoaded(3000, 5000), false);
   assert.equal(poiInsideEffectiveCorridor({ offRouteM: 5400 }, 5000, 500), true);
   assert.equal(poiInsideEffectiveCorridor({ offRouteM: 5600 }, 5000, 500), false);
+});
+
+test('map and list reuse the same effective visibility predicate', () => {
+  const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  assert.match(app, /function isPoiVisible\(poi, effectiveState = currentEffectivePoiState\(\)\)/);
+  assert.match(app, /const mapPois = currentPois\.filter\(\(poi\) => isPoiVisible\(poi, effectiveState\)\)/);
+  assert.match(app, /const visiblePois = pois\s*\.filter\(\(poi\) => isPoiVisible\(poi, effectiveState\)\)/);
 });
