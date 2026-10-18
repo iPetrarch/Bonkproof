@@ -20,7 +20,7 @@ test('pinned snapshots survive refreshed searches and fresh results replace fall
 });
 
 test('pinned POIs remain visible but do not automatically close found-resupply gaps', () => {
-  assert.match(app, /activeCategoryIds\.has\(poi\.category\.id\) \|\| pinnedPoiIds\.has\(poiKey\(poi\)\)/);
+  assert.match(app, /if \(pinnedPoiIds\.has\(poiKey\(poi\)\) \|\| selectedPoiIds\.has\(poiKey\(poi\)\)\) return true/);
   assert.match(app, /poi\.status !== 'pinned'/);
   assert.match(styles, /\.poi-marker\.pinned/);
 });
@@ -35,7 +35,8 @@ test('pins survive when every category is disabled', () => {
 });
 
 test('pinned and selected POIs are not duplicated on the map', () => {
-  assert.match(app, /!pinnedPoiIds\.has\(poiKey\(poi\)\) && selectedPoiIds\.has\(poiKey\(poi\)\)/);
+  assert.match(app, /const mapPois = currentPois\.filter\(\(poi\) => isPoiVisible\(poi, effectiveState\)\)/);
+  assert.match(app, /const selected = mapPois\.filter\(\(poi\) => selectedPoiIds\.has\(poiKey\(poi\)\)\)/);
 });
 
 test('pinned fallbacks are labelled distinctly from current corridor matches', () => {
