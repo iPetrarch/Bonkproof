@@ -959,6 +959,14 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     });
   }
 
+  function isPoiVisible(poi, effectiveState = currentEffectivePoiState()) {
+    if (pinnedPoiIds.has(poiKey(poi)) || selectedPoiIds.has(poiKey(poi))) return true;
+    if (!effectiveState.enabledIds.has(poi.category.id)) return false;
+    const configured = poiConfig?.categories.find((category) => category.id === poi.category.id) || poi.category;
+    const radiusM = effectiveState.radiusOverrides.get(poi.category.id) ?? configured.defaultRadiusM;
+    return poiInsideEffectiveCorridor(poi, radiusM, getGraceMeters({ ...configured, radiusM }, poiConfig));
+  }
+
   function renderMapPois() {
     poiLayer.clearLayers();
     poiMarkers.clear();
@@ -966,8 +974,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       currentPois.filter((poi) => selectedPoiIds.has(poiKey(poi))).forEach((poi) => renderPoiMarker(poi));
       return;
     }
-    const visiblePois = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id) || pinnedPoiIds.has(poiKey(poi)));
-    const mapPois = visiblePois.concat(currentPois.filter((poi) => !activeCategoryIds.has(poi.category.id) && !pinnedPoiIds.has(poiKey(poi)) && selectedPoiIds.has(poiKey(poi))));
+    const effectiveState = currentEffectivePoiState();
+    const mapPois = currentPois.filter((poi) => isPoiVisible(poi, effectiveState));
     const selected = mapPois.filter((poi) => selectedPoiIds.has(poiKey(poi)));
     selected.forEach((poi) => renderPoiMarker(poi));
     const clusterable = mapPois.filter((poi) => !selectedPoiIds.has(poiKey(poi)));
@@ -994,13 +1002,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     currentCategories = categories;
     const effectiveState = currentEffectivePoiState();
     const visiblePois = pois
-      .filter((poi) => {
-        if (pinnedPoiIds.has(poiKey(poi)) || selectedPoiIds.has(poiKey(poi))) return true;
-        if (!effectiveState.enabledIds.has(poi.category.id)) return false;
-        const configured = poiConfig?.categories.find((category) => category.id === poi.category.id) || poi.category;
-        const radiusM = effectiveState.radiusOverrides.get(poi.category.id) ?? configured.defaultRadiusM;
-        return poiInsideEffectiveCorridor(poi, radiusM, getGraceMeters({ ...configured, radiusM }, poiConfig));
-      })
+      .filter((poi) => isPoiVisible(poi, effectiveState))
       .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
     const page = paginatePois(visiblePois, poiPage);
     poiPage = page.page;

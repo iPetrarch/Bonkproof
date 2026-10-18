@@ -343,7 +343,7 @@ test('pagination and dynamic filters update locally while new searches are expli
   assert.match(app, /if \(enabling && currentParsedRoute && !categoryIsLoaded\(categoryId\)\)[\s\S]*?loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
   assert.match(app, /defaultEnabledCategoryIds\(config\)/);
   assert.match(app, /selectedPoiIds\.has\(poiKey\(poi\)\)/);
-  assert.match(app, /const mapPois = visiblePois\.concat\(currentPois\.filter/);
+  assert.match(app, /const mapPois = currentPois\.filter\(\(poi\) => isPoiVisible\(poi, effectiveState\)\)/);
   assert.match(index, /id="poi-categories" class="poi-categories" hidden><\/div>/);
   assert.match(app, /Keine POI-Kategorie ausgewählt/);
 });
