@@ -1288,6 +1288,12 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     const effectiveState = currentEffectivePoiState();
     if (effectiveState.enabledIds.has(categoryId) && currentParsedRoute && !categoryIsLoaded(categoryId)) {
       loadPois(currentParsedRoute, true, false, [categoryId], [categoryId]);
+    } else {
+      poiPage = 1;
+      if (poiConfig) renderCategoryControls(poiConfig);
+      renderPois(currentPois, currentCategories);
+      renderWarnings();
+      renderWarningLayer();
     }
   });
   poiPrevious.addEventListener('click', () => {
