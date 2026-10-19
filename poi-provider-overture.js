@@ -65,9 +65,11 @@ export function resolveOvertureRules(query) {
 export function overturePlaceToElement(place, rules) {
   const rule = rules.find((candidate) => candidate.id === place?.category);
   if (!rule) return null;
-  const lat = Number(place?.lat);
-  const lon = Number(place?.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (place?.lat == null || place?.lon == null) return null;
+  const lat = Number(place.lat);
+  const lon = Number(place.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)
+    || lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
   const id = String(place?.id || `${lon}:${lat}:${place?.name || rule.id}`);
   return {
     type: 'overture',
