@@ -43,3 +43,15 @@ test('map and list reuse the same effective visibility predicate', () => {
   assert.match(app, /const mapPois = currentPois\.filter\(\(poi\) => isPoiVisible\(poi, effectiveState\)\)/);
   assert.match(app, /const visiblePois = pois\s*\.filter\(\(poi\) => isPoiVisible\(poi, effectiveState\)\)/);
 });
+
+test('invalid POI offsets and grace values cannot pass the corridor filter', () => {
+  for (const offRouteM of [undefined, null, NaN, Infinity, -1, 'not-a-number']) {
+    assert.equal(poiInsideEffectiveCorridor({ offRouteM }, 250, 0), false);
+  }
+  assert.equal(poiInsideEffectiveCorridor(null, 250), false);
+  assert.equal(poiInsideEffectiveCorridor({ offRouteM: 30 }, 250, Infinity), false);
+  assert.equal(poiInsideEffectiveCorridor({ offRouteM: 30 }, 250, -10), false);
+  assert.equal(poiInsideEffectiveCorridor({ offRouteM: 30 }, -1), false);
+  assert.equal(poiInsideEffectiveCorridor({ offRouteM: 250 }, 250), true);
+  assert.equal(poiInsideEffectiveCorridor({ offRouteM: 251 }, 250), false);
+});
