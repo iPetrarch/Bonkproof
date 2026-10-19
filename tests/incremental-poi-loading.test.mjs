@@ -24,6 +24,9 @@ test('radius changes reuse sufficient coverage and replace only when more covera
   assert.match(block, /!categoryIsLoaded\(categoryId\)/);
   assert.doesNotMatch(block, /loadedCategoryRadii\.delete\(categoryId\)/);
   assert.match(block, /loadPois\(currentParsedRoute, true, false, \[categoryId\], \[categoryId\]\)/);
+  assert.match(block, /else \{[\s\S]*?renderPois\(currentPois, currentCategories\)/);
+  assert.match(block, /renderWarnings\(\)/);
+  assert.match(block, /renderWarningLayer\(\)/);
 });
 
 test('gap distance settings remain local-only', () => {
