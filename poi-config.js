@@ -106,7 +106,8 @@ export function effectivePoiState(config, enabledIds, radiusOverrides = new Map(
 }
 
 export function poiInsideEffectiveCorridor(poi, effectiveRadiusM, graceM = 0) {
-  const distanceM = Number(poi?.offRouteM);
+  if (poi?.offRouteM == null) return false;
+  const distanceM = Number(poi.offRouteM);
   const radiusM = Number(effectiveRadiusM);
   const allowanceM = Number(graceM);
   if (!Number.isFinite(distanceM) || distanceM < 0 || !Number.isFinite(radiusM) || radiusM < 0
