@@ -94,3 +94,22 @@ test('monthly importer uses Overture GeoParquet, new taxonomy fields and generat
   assert.match(importer, /CREATE VIRTUAL TABLE places_rtree USING rtree/);
   assert.match(importer, /fetchmany\(10_000\)/);
 });
+
+test('local Overture rows reject missing or invalid geographic coordinates', () => {
+  const rules = resolveOvertureRules(buildOverpassQuery([
+    category('supermarket', { anyOf: [{ shop: 'supermarket' }] }),
+  ], [53.1, 7.2, 53.3, 7.5]));
+  const place = { id: 'test', name: 'Testmarkt', category: 'supermarket', lat: 53.2, lon: 7.4 };
+  for (const invalid of [
+    { lat: null }, { lon: null }, { lat: undefined }, { lon: undefined },
+    { lat: NaN }, { lon: Infinity }, { lat: 91 }, { lat: -91 },
+    { lon: 181 }, { lon: -181 }, { lat: 'invalid' },
+  ]) {
+    assert.equal(overturePlaceToElement({ ...place, ...invalid }, rules), null);
+  }
+  assert.deepEqual(
+    [overturePlaceToElement({ ...place, lat: -90, lon: 180 }, rules)?.lat,
+      overturePlaceToElement({ ...place, lat: -90, lon: 180 }, rules)?.lon],
+    [-90, 180],
+  );
+});
