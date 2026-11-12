@@ -70,23 +70,32 @@
           <p id="ice-status" class="ice-status" role="status" hidden></p>
         </div>
 
-        <div id="poi-categories" class="poi-categories" hidden></div>
+        <details class="workspace-section" open>
+          <summary>POI-Auswahl und Suchradien</summary>
+          <div id="poi-categories" class="poi-categories" hidden></div>
+        </details>
 
         <div class="poi-legend" aria-label="POI legend" hidden id="poi-legend">
           <span><i class="legend-dot"></i> inside corridor</span>
           <span><i class="legend-dot near"></i> near miss</span>
         </div>
 
-        <p id="poi-empty" class="poi-empty" hidden></p>
-        <div id="poi-warning-summary" class="warning-summary" hidden></div>
-        <ol id="poi-warning-list" class="warnings-list" hidden></ol>
-        <ol id="poi-list" class="poi-list" hidden></ol>
-        <div id="poi-pagination" class="poi-pagination" hidden>
-          <span id="poi-page-summary"></span>
-          <span id="poi-page-number"></span>
-          <button id="poi-previous" type="button">Zurück</button>
-          <button id="poi-next" type="button">Weiter</button>
-        </div>
+        <details class="workspace-section" open>
+          <summary>Long-Distance-Warnungen</summary>
+          <div id="poi-warning-summary" class="warning-summary" hidden></div>
+          <ol id="poi-warning-list" class="warnings-list" hidden></ol>
+        </details>
+        <details class="workspace-section" open>
+          <summary>Gefundene POIs</summary>
+          <p id="poi-empty" class="poi-empty" hidden></p>
+          <ol id="poi-list" class="poi-list" hidden></ol>
+          <div id="poi-pagination" class="poi-pagination" hidden>
+            <span id="poi-page-summary"></span>
+            <span id="poi-page-number"></span>
+            <button id="poi-previous" type="button">Zurück</button>
+            <button id="poi-next" type="button">Weiter</button>
+          </div>
+        </details>
       </section>
 
       <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>
