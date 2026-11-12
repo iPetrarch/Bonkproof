@@ -481,3 +481,10 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
   background: #ece3d2;
   overflow-wrap: anywhere;
 }
+
+/* Independently collapsible POI workspace sections. Native details keep content mounted. */
+.workspace-section { margin: 0.75rem 0; border: 1px solid var(--line); border-radius: 0.55rem; padding: 0 0.75rem; }
+.workspace-section > summary { min-height: 44px; display: list-item; padding: 0.75rem 0; cursor: pointer; font-weight: 800; color: var(--route-dark); }
+.workspace-section > summary:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
+.workspace-section[open] > summary { margin-bottom: 0.5rem; border-bottom: 1px solid var(--line); }
+.workspace-section > .poi-categories, .workspace-section > .poi-list, .workspace-section > .warnings-list { margin-bottom: 0.75rem; }
