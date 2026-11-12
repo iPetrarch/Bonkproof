@@ -188,6 +188,11 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
 .ice-toggle.is-active { background: var(--danger); color: #fffaf0; }
 .ice-status { margin: 0.55rem 0 0; padding: 0.65rem 0.75rem; border-left: 4px solid var(--danger); background: #fff0ed; color: var(--ink); font-size: 0.78rem; line-height: 1.4; }
 
+.workspace-section { margin: 0.75rem 0; border: 1px solid var(--line); border-radius: 0.55rem; padding: 0 0.75rem; }
+.workspace-section > summary { min-height: 44px; display: list-item; cursor: pointer; padding: 0.75rem 0.2rem; font-weight: 800; color: var(--route-dark); }
+.workspace-section > summary:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
+.workspace-section[open] > summary { margin-bottom: 0.4rem; border-bottom: 1px solid var(--line); }
+
 .poi-categories { display: grid; gap: 0.55rem; margin-bottom: 0.8rem; }
 .category-row {
   width: 100%;
