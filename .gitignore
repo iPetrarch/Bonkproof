@@ -27,6 +27,8 @@ data/*.sqlite-*
 # Dependencies / build output
 node_modules/
 vendor/leaflet/
+!vendor/leaflet/
+!vendor/leaflet/**
 dist/
 coverage/
 
