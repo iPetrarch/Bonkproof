@@ -1,5 +1,16 @@
 # Deployment
 
+## Central DeployEngine release contract (2026-11-20)
+
+The central Foundation workflow prepares Bonkproof releases from
+`scripts/create-sftp-manifest.mjs`. The manifest is a fixed allowlist; it
+contains no database, local profile or runtime data. Leaflet 1.9.4 is pinned
+in `package-lock.json` and the exact browser assets used by the release are
+vendored in `vendor/leaflet/`, so a release is bound entirely to its source
+commit. The former workflow-local dependency download is not an artifact
+source for the central path. This is release preparation only: no target,
+credential or production deployment has changed.
+
 Bonkproof is currently a static web app. It can be hosted from a subdirectory such as:
 
 `https://petrarch.de/bonkproof/`
