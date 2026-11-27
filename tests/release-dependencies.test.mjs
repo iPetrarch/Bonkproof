@@ -16,6 +16,7 @@ test('all deployment paths publish the same files and cover transitive local JS 
   });
   for (const [name, files] of [['PowerShell', local], ['GitHub', github]]) {
     assert.deepEqual(files.toSorted(), central.toSorted(), name);
+    assert.equal(files.at(-1), 'sw.js', name);
   }
 
   const dependencies = ['index.html'];

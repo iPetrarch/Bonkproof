@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 const workflow = fs.readFileSync('.github/workflows/deploy.yml', 'utf8');
@@ -46,10 +49,60 @@ test('GitHub deployment uses direct OpenSSH SFTP without WinSCP', () => {
   assert.doesNotMatch(workflow, /deploy\.ps1 -Profile home/);
 });
 
-test('password-authenticated SFTP is not forced into OpenSSH batch-file mode', () => {
-  assert.match(workflow, /-oBatchMode=no/);
-  assert.match(workflow, /PreferredAuthentications=password,keyboard-interactive/);
-  assert.doesNotMatch(workflow, /\n\s+-b\s/);
+test('SFTP batch mode preserves password auth and treats cd and put as strict commands', () => {
+  const upload = workflow.slice(workflow.indexOf('sshpass -e sftp'));
+  const options = upload.slice(0, upload.indexOf('<<EOF'));
+  assert.match(options, /-oBatchMode=no\s+\\\n\s+-b -(?=\s)/);
+  assert.match(options, /PreferredAuthentications=password,keyboard-interactive/);
+  assert.match(options, /PubkeyAuthentication=no/);
+  assert.match(options, /StrictHostKeyChecking=yes/);
+  const batch = upload.slice(upload.indexOf('<<EOF')).split('\n').slice(1);
+  const commands = batch.slice(0, batch.findIndex((line) => line.trim() === 'EOF')).map((line) => line.trim());
+  assert.equal(commands[0], '-mkdir $remote');
+  assert.equal(commands[1], 'cd $remote');
+  assert.equal(commands.at(-1), 'bye');
+  assert.equal(commands.at(-2), 'put sw.js');
+  assert.ok(commands.every((line) => /^(?:-mkdir |cd |put |bye$)/.test(line)));
+  assert.ok(workflow.slice(workflow.indexOf('name: Deploy to production')).includes('set -euo pipefail'));
+});
+
+const localSftp = '/usr/bin/sftp';
+const localServer = '/usr/lib/openssh/sftp-server';
+test('local OpenSSH tolerates an existing directory and aborts on cd or put failures', {
+  skip: !fs.existsSync(localSftp) || !fs.existsSync(localServer),
+}, () => {
+  const directory = fs.mkdtempSync(join(tmpdir(), 'bonk-batch-'));
+  try {
+    fs.mkdirSync(join(directory, 'target'));
+    fs.writeFileSync(join(directory, 'input'), 'test payload');
+    // Directly connect the client to a local subsystem over stdio. No SSH connection.
+    const run = (commands) => {
+      const stdin = join(directory, 'batch');
+      const output = join(directory, 'output');
+      fs.writeFileSync(stdin, commands.join('\n') + '\n');
+      const inFd = fs.openSync(stdin, 'r');
+      const outFd = fs.openSync(output, 'w');
+      try {
+        const result = spawnSync(localSftp, ['-q', '-oBatchMode=no', '-b', '-', '-D', localServer], {
+          cwd: directory, stdio: [inFd, outFd, outFd], timeout: 10000,
+        });
+        if (result.error) throw result.error;
+        return { status: result.status, output: fs.readFileSync(output, 'utf8') };
+      } finally {
+        fs.closeSync(inFd);
+        fs.closeSync(outFd);
+      }
+    };
+    assert.equal(run(['-mkdir target', 'cd target', 'put input received', 'bye']).status, 0);
+    assert.equal(fs.readFileSync(join(directory, 'target', 'received'), 'utf8'), 'test payload');
+    for (const errorCommand of ['cd absent', 'put absent failed', 'put input absent/failed']) {
+      const result = run(['cd target', errorCommand, 'put input forbidden', 'bye']);
+      assert.equal(result.status, 1, result.output);
+      assert.equal(fs.existsSync(join(directory, 'target', 'forbidden')), false);
+    }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('GitHub deployment uploads the complete production publish set', () => {

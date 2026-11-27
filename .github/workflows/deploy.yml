@@ -106,6 +106,7 @@ jobs:
           sshpass -e sftp \
             -P "$port" \
             -oBatchMode=no \
+            -b - \
             -oPreferredAuthentications=password,keyboard-interactive \
             -oPubkeyAuthentication=no \
             -oStrictHostKeyChecking=yes \

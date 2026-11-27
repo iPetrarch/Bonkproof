@@ -156,3 +156,12 @@ Der Übergabezweig `feat/issue-61-local-first-pwa` basiert auf dem erneut abgegl
 Erneut erfolgreich waren 180 Einzeltests in 27 Dateien, SHA-256-Prüfung des Anwendungscaches, der zentrale SFTP-Manifesttest, die Python-Syntaxprüfung und Chromium bei 360 und 1.440 Pixeln. Chromium prüfte auch den Offline-Roundtrip der synthetischen Projekte mit 200, 600 und 1.000 km. Providerantworten waren simuliert. Linux-WebKit war bereits im Release-Review erfolgreich und wurde für diese Übergabe nicht erneut installiert.
 
 Die [Abnahmecheckliste](pwa.md) gilt weiter. GitHub-PR-CI, produktives Hosting, Live-Provider mit einer 600-km-GPX, native iPhone-Installation und VoiceOver sowie der Import auf Zielgeräten sind getrennte Prüfschritte. Phase F bleibt zurückgestellt.
+
+
+## Lokale Deployment-Härtung für PR #63 · 27. November 2026
+
+Der manuelle GitHub-Workflow nutzt expliziten OpenSSH-SFTP-Batchmodus mit weiter aktiver Passwortauthentifizierung. Nur `mkdir` toleriert Fehler. Fehlgeschlagene `cd`- oder `put`-Befehle stoppen den Upload vor allen nachfolgenden Dateien. Die Anwendung wird weiterhin mit `sw.js` zuletzt übertragen. Die PowerShell-Pipeline behält Binärübertragung, Fehlerprüfung pro Datei und die erst nach Erfolg ersetzte inkrementelle Statusdatei bei.
+
+Die drei Release-Dateilisten, Modulabhängigkeiten und Cache-Prüfsummen wurden geprüft. 181 Einzeltests in 27 Dateien, der zentrale Manifesttest und der lokale OpenSSH-Subsystemtest waren erfolgreich. Der lokale Subsystemtest öffnet keine SSH-Verbindung. Der Windows-Dry-Run und das tatsächliche Hosting bleiben Abnahmeschritte vor einer getrennten Produktionsfreigabe.
+
+VPS-Foundation wurde lesend geprüft. Die Bonkproof-Produktivfreigabe steht auf `false`. Der aktuelle Direct-Static-Workflow ist auf HeadingEast ausgerichtet. Ein separat überprüfter Bonkproof-Pfad benötigt vorhandene oder vorab vorbereitete Zielverzeichnisse und eine garantierte Veröffentlichung des Workers zuletzt. Details und manuelle Freigabeschritte stehen in [Deployment](deployment.md). Die Härtung liegt lokal vor.

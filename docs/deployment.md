@@ -8,8 +8,14 @@ contains no database, local profile or runtime data. Leaflet 1.9.4 is pinned
 in `package-lock.json` and the exact browser assets used by the release are
 vendored in `vendor/leaflet/`, so a release is bound entirely to its source
 commit. The former workflow-local dependency download is not an artifact
-source for the central path. This is release preparation only: no target,
-credential or production deployment has changed.
+source for the central path. This prepares the archive. The central production path for Bonkproof remains gated.
+
+### Requirements for future Foundation deployment
+
+- The [DeployEngine registry](https://github.com/iPetrarch/VPS-Foundation/blob/main/registry/deploy-engine.json) registers Bonkproof for the direct-static executor. Its [production target entry](https://github.com/iPetrarch/VPS-Foundation/blob/main/registry/deployment-targets.json) has `deployment_enabled: false`. A separately approved production enablement is required.
+- The [current Direct-Static workflow](https://github.com/iPetrarch/VPS-Foundation/blob/main/.github/workflows/direct-static-update.yml) selects HeadingEast explicitly. A reviewed Bonkproof path must use Bonkproof’s registered release, source checks, target and confirmation controls.
+- The [updater](https://github.com/iPetrarch/VPS-Foundation/blob/main/scripts/direct_static_update.py) verifies the existing index, canonical public root and parent directories. Provision or verify all directories before the update, including `config`, `api`, `vendor/leaflet/images` and `icons`. The current ordering puts `index.html` last and gives `sw.js` no final position. Require and test worker-last ordering before enabling Bonkproof on this path.
+- Stage a release with the reviewed commit and archive checksum, verify the backup and file readback, and ensure an exclusive deployment window. Then verify HTTPS, MIME types, worker scope and offline startup with the same checklist below.
 
 Bonkproof is currently a static web app. It can be hosted from a subdirectory such as:
 
@@ -107,7 +113,7 @@ Each profile keeps its own ignored SHA-256 state file:
 
 Only files whose current SHA-256 differs from the last successful deployment for that profile are uploaded. The state is written only after all uploads succeed.
 
-The script does not delete remote files. It only creates the configured remote directory when missing and uploads changed whitelisted files.
+The script uploads in allowlist order with WinSCP binary transfer and checks each transfer result. It saves the new local state only after every upload succeeds, using a temporary file followed by replacement. State reflects the last successful deployment from that profile. After a partial transfer, an external deployment or uncertain state, review a full `-DryRun -Force` and use `-Force` for the approved retry. The script creates missing target directories where required and leaves remote files outside the release untouched.
 
 ## WinSCP dependency
 
@@ -137,14 +143,15 @@ PasswordEnvironmentVariable = 'BONKPROOF_SFTP_PASSWORD_HOME'
 
 Never commit passwords or private keys.
 
-## First live test
+## Manual release procedure
 
-1. Configure one local profile.
-2. Run `-DryRun` and confirm exactly three publish files are listed.
-3. Run the real deployment.
-4. Open `https://petrarch.de/bonkproof/`.
-5. Load a known GPX file and verify map, route distance, start and finish markers.
-6. Repeat with the second profile when that machine is available.
+1. Select the reviewed release commit. Run `npm test`, `node tests/central-sftp-manifest-test.mjs` and `node scripts/update-app-shell.mjs --check`.
+2. Require a dry run before approval. On Windows run `.\deploy.ps1 -Profile home -DryRun -Force` or use the equivalent work profile. Compare the full list to the generated release manifest and confirm `sw.js` is last. Also run without `-Force` to inspect an intended incremental upload. This preview validates local files and hashes without opening a connection. The manual GitHub workflow has no dry-run input. Inspect its batch list against the same manifest before dispatch.
+3. Back up the existing public application files before opening the release window. Record the target, release commit, previous hashes and files absent from the previous release. Keep the verified backup separately from the upload and confirm how to restore the previous application. Exclude parallel writers during the rollout.
+4. Once production deployment is approved separately, choose one manual path. The GitHub workflow runs only through `workflow_dispatch`. It uses `sshpass`, pinned SSH host-key verification and SFTP command batch mode `-b -` with `BatchMode=no` before it so password authentication remains available. Only `mkdir` errors are tolerable. A failed `cd` or `put` stops the job and prevents later uploads. Both paths publish `sw.js` last. An interrupted upload can leave some application files replaced. Inspect the remote state and use the backup or a verified full retry.
+5. Verify HTTPS, redirects and the trailing slash at `/bonkproof/`. Check the worker URL, `/bonkproof/` scope, JavaScript MIME types, manifest, CSS and PNG types against [the PWA requirements](pwa.md). On a fresh browser profile confirm the shell is ready, save a test project and verify a full offline restart and local project opening. Check an update from a prior release separately.
+
+The automated release tests cover the allowlists, local JavaScript imports, the shell integrity table and OpenSSH batch error handling against a local subsystem when available. A local test does not verify production password authentication, host identity, server permissions, hosting or remote MIME settings. Live POI providers with a real 600-km GPX, iPhone home-screen and VoiceOver checks, and TrackKin and other target-device imports remain open.
 
 ## Deployment secrets
 
