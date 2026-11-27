@@ -23,16 +23,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prepare local Leaflet assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install --no-save --ignore-scripts leaflet@1.9.4
-          mkdir -p vendor/leaflet
-          cp node_modules/leaflet/dist/leaflet.js vendor/leaflet/leaflet.js
-          cp node_modules/leaflet/dist/leaflet.css vendor/leaflet/leaflet.css
-          cp node_modules/leaflet/LICENSE vendor/leaflet/LICENSE
-
       - name: Run regression tests
         run: npm test
 
@@ -116,6 +106,7 @@ jobs:
           sshpass -e sftp \
             -P "$port" \
             -oBatchMode=no \
+            -b - \
             -oPreferredAuthentications=password,keyboard-interactive \
             -oPubkeyAuthentication=no \
             -oStrictHostKeyChecking=yes \
@@ -132,14 +123,24 @@ jobs:
           put vendor/leaflet/leaflet.js vendor/leaflet/leaflet.js
           put vendor/leaflet/leaflet.css vendor/leaflet/leaflet.css
           put vendor/leaflet/LICENSE vendor/leaflet/LICENSE
+          -mkdir vendor/leaflet/images
+          put vendor/leaflet/images/layers.png vendor/leaflet/images/layers.png
+          put vendor/leaflet/images/layers-2x.png vendor/leaflet/images/layers-2x.png
+          put vendor/leaflet/images/marker-icon.png vendor/leaflet/images/marker-icon.png
+          put vendor/leaflet/images/marker-icon-2x.png vendor/leaflet/images/marker-icon-2x.png
+          put vendor/leaflet/images/marker-shadow.png vendor/leaflet/images/marker-shadow.png
           put app.js
           put export-model.js
           put export-core.js
           put export-profiles.js
           put export-gap-warnings.js
           put routebook.js
+          put project-format.js
+          put project-store.js
+          put project-workspace.js
           put poi-search.js
           put poi-projection.js
+          put poi-pass-index.js
           put poi-clustering.js
           put poi-config.js
           put poi-provider-overture.js
@@ -149,6 +150,13 @@ jobs:
           put config/resupply-profile.json config/resupply-profile.json
           -mkdir api
           put api/places.php api/places.php
+          put manifest.json
+          put pwa.js
+          -mkdir icons
+          put icons/bonkproof-192.png icons/bonkproof-192.png
+          put icons/bonkproof-512.png icons/bonkproof-512.png
+          put icons/apple-touch-icon.png icons/apple-touch-icon.png
+          put sw.js
           bye
           EOF
 

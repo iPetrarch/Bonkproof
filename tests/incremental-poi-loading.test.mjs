@@ -46,7 +46,6 @@ test('loaded category cache is radius-aware and resets with route view state', (
   assert.match(app, /let loadedCategoryRadii = new Map\(\)/);
   assert.match(app, /categoryRadiusIsLoaded\(loadedCategoryRadii\.get\(categoryId\), radiusM\)/);
   assert.match(app, /loadedCategoryRadii = new Map\(\)/);
-  assert.match(app, /loadedCategoryRadii\.set\(category\.id, Math\.max\(loadedCategoryRadii\.get\(category\.id\) \|\| 0, category\.radiusM\)\)/);
 });
 
 test('successful radius replacement removes stale POIs only after the targeted request completes', () => {

@@ -120,7 +120,7 @@ export function buildRoutebook(pois, selectedPoiIds, routeDistanceMeters, gapCon
   return {
     entries,
     stops,
-    longestGapM: Math.max(...entries.slice(1).map((entry) => entry.distanceFromPreviousM)),
+    longestGapM: entries.reduce((longest, entry) => Math.max(longest, entry.distanceFromPreviousM), 0),
     warningThresholdM: severity.thresholdM,
     gapSettings: severity.settings || null,
     gapThresholds: severity.thresholds || null,
@@ -185,20 +185,26 @@ export function buildFoundPoiWarnings(pois, routeDistanceMeters, gapConfig = ROU
     ...found.map((poi) => ({ kind: 'poi', name: poi.name, routeMeters: poi.routeKm * 1000, poiId: poiKey(poi) })),
     { kind: 'route-end', name: 'Ziel', routeMeters: routeDistanceMeters, poiId: null },
   ];
-  const warnings = points.slice(1).map((to, index) => {
-    const from = points[index];
+  let longestGapM = 0;
+  const warnings = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1];
+    const to = points[index];
     const lengthM = Math.max(0, to.routeMeters - from.routeMeters);
-    return {
+    longestGapM = Math.max(longestGapM, lengthM);
+    const gapSeverity = severity.classify(lengthM);
+    if (!gapSeverity) continue;
+    warnings.push({
       from: from.name,
       to: to.name,
       ...gapMetadata(from.routeMeters, to.routeMeters, gapType, from, to),
       lengthM,
-      severity: severity.classify(lengthM),
-    };
-  }).filter((warning) => warning.severity);
+      severity: gapSeverity,
+    });
+  }
   return {
     warnings,
-    longestGapM: Math.max(0, ...points.slice(1).map((to, index) => to.routeMeters - points[index].routeMeters)),
+    longestGapM,
     foundCount: found.length,
     warningThresholdM: severity.thresholdM,
     gapSettings: severity.settings || null,
@@ -234,7 +240,7 @@ export function extractRouteGeometryRange(parsedRoute, startDistanceM, endDistan
       const b = points[index + 1];
       const length = routeDistanceMeters(a, b);
       const nextCumulative = cumulative + length;
-      if (nextCumulative >= startDistanceM && cumulative <= endDistanceM && length > 0) {
+      if (nextCumulative > startDistanceM && cumulative < endDistanceM && length > 0) {
         const from = Math.max(0, (startDistanceM - cumulative) / length);
         const to = Math.min(1, (endDistanceM - cumulative) / length);
         const fromPoint = interpolate([a.lat, a.lon], [b.lat, b.lon], from);

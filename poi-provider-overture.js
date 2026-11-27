@@ -84,12 +84,12 @@ export function overturePlaceToElement(place, rules) {
   };
 }
 
-async function fetchOvertureElements(originalFetch, query, signal) {
+async function fetchOvertureElements(originalFetch, query, signal, pageUrl) {
   const bbox = extractOverpassBbox(query);
   const rules = resolveOvertureRules(query);
   if (!bbox || !rules?.length) return null;
 
-  const url = new URL(OVERTURE_API_URL, window.location.href);
+  const url = new URL(OVERTURE_API_URL, pageUrl);
   url.searchParams.set('categories', rules.map((rule) => rule.id).join(','));
   url.searchParams.set('west', String(bbox.west));
   url.searchParams.set('south', String(bbox.south));
@@ -109,8 +109,12 @@ async function fetchOvertureElements(originalFetch, query, signal) {
     });
     if (!response.ok) return null;
     const payload = await response.json();
-    const places = Array.isArray(payload?.places) ? payload.places : [];
-    return places.map((place) => overturePlaceToElement(place, rules)).filter(Boolean);
+    if (!Array.isArray(payload?.places)) return { elements: [], remark: 'Invalid local POI response.' };
+    return {
+      elements: payload.places.map((place) => overturePlaceToElement(place, rules)).filter(Boolean),
+      // The existing endpoint caps results at 5,000 rows.
+      ...(payload.places.length >= 5000 ? { remark: 'Local POI result limit reached.' } : {}),
+    };
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Local Overture POI provider unavailable; falling back to Overpass.', error);
@@ -131,11 +135,13 @@ export function installOvertureFetchBridge(target = globalThis) {
       return originalFetch(input, init);
     }
 
+    init.signal?.throwIfAborted();
     const query = overpassBodyData(init.body);
-    const elements = await fetchOvertureElements(originalFetch, query, init.signal);
+    const elements = await fetchOvertureElements(originalFetch, query, init.signal, target.location.href);
+    init.signal?.throwIfAborted();
     if (elements === null) return originalFetch(input, init);
 
-    return new Response(JSON.stringify({ elements }), {
+    return new Response(JSON.stringify(elements), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

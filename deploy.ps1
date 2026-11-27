@@ -15,27 +15,6 @@ $repoRoot = $PSScriptRoot
 $profilePath = Join-Path $repoRoot "deploy.$Profile.local.ps1"
 $statePath = Join-Path $repoRoot ".deploy-state.$Profile.json"
 
-function Initialize-LeafletAssets {
-    $leafletVersion = '1.9.4'
-    $vendorDirectory = Join-Path $repoRoot 'vendor/leaflet'
-    $assets = @{
-        'leaflet.js' = "https://unpkg.com/leaflet@$leafletVersion/dist/leaflet.js"
-        'leaflet.css' = "https://unpkg.com/leaflet@$leafletVersion/dist/leaflet.css"
-        'LICENSE' = "https://unpkg.com/leaflet@$leafletVersion/LICENSE"
-    }
-
-    New-Item -ItemType Directory -Path $vendorDirectory -Force | Out-Null
-    foreach ($asset in $assets.GetEnumerator()) {
-        $target = Join-Path $vendorDirectory $asset.Key
-        if (-not (Test-Path -LiteralPath $target)) {
-            Write-Host "Preparing local Leaflet asset $($asset.Key)..."
-            Invoke-WebRequest -Uri $asset.Value -OutFile $target -UseBasicParsing
-        }
-    }
-}
-
-Initialize-LeafletAssets
-
 $publishFiles = @(
     'index.html',
     'impressum.html',
@@ -44,12 +23,18 @@ $publishFiles = @(
     'vendor/leaflet/leaflet.js',
     'vendor/leaflet/leaflet.css',
     'vendor/leaflet/LICENSE',
+    'vendor/leaflet/images/layers.png',
+    'vendor/leaflet/images/layers-2x.png',
+    'vendor/leaflet/images/marker-icon.png',
+    'vendor/leaflet/images/marker-icon-2x.png',
+    'vendor/leaflet/images/marker-shadow.png',
     'app.js',
     'export-model.js',
     'export-core.js',
     'export-profiles.js',
     'export-gap-warnings.js',
     'routebook.js',
+    'project-format.js', 'project-store.js', 'project-workspace.js',
     'poi-search.js',
     'poi-projection.js', 'poi-pass-index.js',
     'poi-clustering.js',
@@ -58,7 +43,8 @@ $publishFiles = @(
     'resupply-profile.js',
     'api/places.php',
     'config/poi-categories.json',
-    'config/resupply-profile.json'
+    'config/resupply-profile.json',
+    'manifest.json', 'pwa.js', 'icons/bonkproof-192.png', 'icons/bonkproof-512.png', 'icons/apple-touch-icon.png', 'sw.js'
 )
 
 function Assert-LocalJavaScriptImportsPublished([string[]]$Files) {
@@ -86,6 +72,8 @@ function Assert-LocalJavaScriptImportsPublished([string[]]$Files) {
 }
 
 Assert-LocalJavaScriptImportsPublished $publishFiles
+& node (Join-Path $repoRoot 'scripts/update-app-shell.mjs') --check
+if ($LASTEXITCODE -ne 0) { throw 'Application shell failed integrity verification.' }
 
 function Get-Sha256([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()

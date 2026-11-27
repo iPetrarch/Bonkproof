@@ -481,3 +481,64 @@ h2 { margin-bottom: 0.5rem; letter-spacing: -0.018em; }
   background: #ece3d2;
   overflow-wrap: anywhere;
 }
+
+/* Independently collapsible POI workspace sections. Native details keep content mounted. */
+.workspace-section { margin: 0.75rem 0; border: 1px solid var(--line); border-radius: 0.55rem; padding: 0 0.75rem; }
+.workspace-section > summary { min-height: 44px; display: list-item; padding: 0.75rem 0; cursor: pointer; font-weight: 800; color: var(--route-dark); }
+.workspace-section > summary:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
+.workspace-section[open] > summary { margin-bottom: 0.5rem; border-bottom: 1px solid var(--line); }
+.workspace-section > .poi-categories, .workspace-section > .poi-list, .workspace-section > .warnings-list { margin-bottom: 0.75rem; }
+
+.scoped-category { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; min-height: 44px; }
+.scoped-category input[type="number"] { width: 6em; max-width: 100%; }
+#scoped-poi-search fieldset { min-width: 0; }
+#scoped-poi-search button, .warning-actions > button { min-height: 44px; }
+.warning-actions { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+
+.project-fields { display: grid; gap: .5rem; padding-bottom: .75rem; }
+.project-fields label { display: grid; gap: .25rem; min-width: 0; }
+.project-fields input, .project-fields select { min-width: 0; width: 100%; }
+.project-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.project-actions button, .project-fields input, .project-fields select {
+  min-height: 44px; padding: .35rem .65rem; font: inherit; color: var(--ink);
+  background: var(--panel-solid); border: 1px solid var(--line); border-radius: .45rem;
+}
+.project-actions button:disabled { opacity: .55; }
+.project-fields p { margin: 0; overflow-wrap: anywhere; }
+.project-fields p:empty { display: none; }
+
+.topbar { padding-top: max(.85rem, env(safe-area-inset-top)); padding-inline: max(.85rem, env(safe-area-inset-left)) max(.85rem, env(safe-area-inset-right)); }
+.leaflet-top { top: env(safe-area-inset-top); }
+.leaflet-left { left: env(safe-area-inset-left); }
+.leaflet-right { right: env(safe-area-inset-right); }
+.sheet { min-width: 0; padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right)); }
+.site-footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+.tab, .offline-help > summary, .pwa-status button, .offline-help button { min-height: 44px; }
+.pwa-status { margin-bottom: .5rem; font-size: .875rem; }
+.pwa-status p, .offline-help p { margin: .3rem 0; overflow-wrap: anywhere; }
+.pwa-status p:empty { display: none; }
+.pwa-status button, .offline-help button { max-width: 100%; }
+.offline-help > summary { padding: .65rem 0; cursor: pointer; }
+.map-background-status, .map-planning-link {
+  position: absolute; z-index: 500; bottom: 2rem;
+  margin: 0; padding: .45rem .65rem; border-radius: .45rem; background: var(--panel-solid); color: var(--route-dark);
+}
+.map-background-status { left: max(1rem, env(safe-area-inset-left)); right: max(1rem, env(safe-area-inset-right)); width: fit-content; max-width: calc(100% - 2rem); font-size: .85rem; }
+.map-planning-link { display: none; }
+#map.map-offline { background-color: #e5ded0; background-image: linear-gradient(#d8cfbd 1px, transparent 1px), linear-gradient(90deg, #d8cfbd 1px, transparent 1px); background-size: 32px 32px; }
+.poi-list-item button, .routebook-list button { min-height: 44px; }
+@media (max-width: 959px) {
+  .map-planning-link { display: grid; place-items: center; min-height: 44px; right: max(1rem, env(safe-area-inset-right)); bottom: 1.4rem; }
+  .map-background-status { bottom: 4.5rem; }
+  .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  .warning-item { align-items: flex-start; flex-direction: column; gap: .35rem; overflow-wrap: anywhere; }
+}
+:where(.tabs, .pwa-status, .offline-help, .map-planning-link) :focus-visible,
+.map-planning-link:focus-visible { outline: 3px solid var(--ochre-strong); outline-offset: 2px; }
+
+.leaflet-popup-content button, .gap-settings input { min-height: 44px; }
+@media (min-width: 960px) {
+  .sheet { padding-inline: max(1.25rem, env(safe-area-inset-left)) max(1.25rem, env(safe-area-inset-right)); }
+}

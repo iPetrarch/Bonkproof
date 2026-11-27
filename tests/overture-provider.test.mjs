@@ -4,6 +4,7 @@ import test from 'node:test';
 import { buildOverpassQuery } from '../poi-config.js';
 import {
   extractOverpassBbox,
+  installOvertureFetchBridge,
   overturePlaceToElement,
   resolveOvertureRules,
 } from '../poi-provider-overture.js';
@@ -112,4 +113,54 @@ test('local Overture rows reject missing or invalid geographic coordinates', () 
       overturePlaceToElement({ ...place, lat: -90, lon: 180 }, rules)?.lon],
     [-90, 180],
   );
+});
+
+test('the bridge sends no request for an aborted lookup and no fallback after a late failure', async () => {
+  const calls = [];
+  const controller = new AbortController();
+  const target = {
+    location: { href: 'https://bonk.example/' },
+    fetch: async (url) => {
+      calls.push(String(url));
+      controller.abort();
+      return new Response(null, { status: 503 });
+    },
+  };
+  installOvertureFetchBridge(target);
+  const query = buildOverpassQuery([category('supermarket', { anyOf: [{ shop: 'supermarket' }] })], [53.1, 7.2, 53.3, 7.5]);
+  const lookup = () => target.fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST', body: new URLSearchParams({ data: query }), signal: controller.signal,
+  });
+  await assert.rejects(lookup, { name: 'AbortError' });
+  await assert.rejects(lookup, { name: 'AbortError' });
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0]).origin, 'https://bonk.example');
+});
+
+test('local malformed and capped responses report incompleteness without an external fallback', async () => {
+  const calls = [];
+  const place = { id: 'market', name: 'Market', category: 'supermarket', lat: 53.2, lon: 7.4 };
+  const replies = [{}, { places: Array(5000).fill(place) }, { places: [place] }];
+  const target = {
+    location: { href: 'https://bonk.example/' },
+    fetch: async (url) => {
+      calls.push(String(url));
+      return Response.json(replies.shift());
+    },
+  };
+  installOvertureFetchBridge(target);
+  const query = buildOverpassQuery([category('supermarket', { anyOf: [{ shop: 'supermarket' }] })], [53.1, 7.2, 53.3, 7.5]);
+  const lookup = async () => (await target.fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST', body: new URLSearchParams({ data: query }),
+  })).json();
+  const malformed = await lookup();
+  const capped = await lookup();
+  const complete = await lookup();
+  assert.equal(malformed.elements.length, 0);
+  assert.ok(malformed.remark);
+  assert.equal(capped.elements.length, 5000);
+  assert.ok(capped.remark);
+  assert.equal(complete.elements.length, 1);
+  assert.equal(complete.remark, undefined);
+  assert.ok(calls.every((url) => new URL(url).origin === 'https://bonk.example'));
 });

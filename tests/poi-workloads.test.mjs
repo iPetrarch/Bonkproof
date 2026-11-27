@@ -83,3 +83,26 @@ test('a single-category minimum workload is the only irreducible case', () => {
   };
   assert.deepEqual(splitPoiQueryWorkload({ id: String(section.index), section, categories: [categories[0]] }), []);
 });
+
+test('global packages cover an entire sparse edge and never bridge disconnected track segments', () => {
+  const parsed = { segments: [
+    [{ lat: 52, lon: 9 }, { lat: 52, lon: 10.6 }],
+    [{ lat: 54, lon: 14 }, { lat: 54, lon: 14.1 }],
+  ] };
+  const sections = buildPoiQuerySections(parsed);
+  const firstTrack = sections.filter((section) => section.points[0].lat === 52);
+  const secondTrack = sections.at(-1);
+  assert.equal(firstTrack.length, 6);
+  assert.equal(secondTrack.points[0].lon, 14);
+  assert.equal(firstTrack.at(-1).coreEndMeters, secondTrack.coreStartMeters);
+  for (const section of sections) {
+    assert.equal(section.points[0].routeMeters, section.queryStartMeters);
+    assert.equal(section.points.at(-1).routeMeters, section.queryEndMeters);
+    assert.ok(section.points.every((point) => point.lat === section.points[0].lat));
+  }
+  assert.ok(firstTrack[2].points[0].lon > 9.5);
+  for (const half of splitPoiQuerySection(firstTrack[2])) {
+    assert.equal(half.points[0].routeMeters, half.queryStartMeters);
+    assert.equal(half.points.at(-1).routeMeters, half.queryEndMeters);
+  }
+});

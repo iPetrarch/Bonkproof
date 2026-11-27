@@ -1,3 +1,5 @@
+import { buildRouteGeometry } from './poi-projection.js';
+
 export const POI_QUERY_SECTION_MAX_M = 20_000;
 export const POI_QUERY_OVERLAP_M = 1_000;
 export const POI_QUERY_ADAPTIVE_MIN_M = 2_500;
@@ -18,42 +20,58 @@ export function paginatePois(pois, page, pageSize = POI_LIST_PAGE_SIZE) {
   };
 }
 
-export function buildPoiQuerySections(parsed, maxMeters = POI_QUERY_SECTION_MAX_M, overlapMeters = POI_QUERY_OVERLAP_M) {
-  const points = parsed.segments.flat();
-  if (points.length === 0) return [];
-  const toRad = (value) => value * Math.PI / 180;
-  const positions = [0];
-  for (let index = 1; index < points.length; index += 1) {
+function clipPoiQueryPoints(points, start, end) {
+  if (points.some((point) => point.routeMeters === undefined)) return points;
+  const clipped = [];
+  const boundary = (a, b, meters) => {
+    const fraction = (meters - a.routeMeters) / (b.routeMeters - a.routeMeters);
+    return { lat: a.lat + (b.lat - a.lat) * fraction, lon: a.lon + (b.lon - a.lon) * fraction, routeMeters: meters };
+  };
+  for (const [index, point] of points.entries()) {
     const previous = points[index - 1];
-    const current = points[index];
-    const dLat = toRad(current.lat - previous.lat);
-    const dLon = toRad(current.lon - previous.lon);
-    const lat1 = toRad(previous.lat);
-    const lat2 = toRad(current.lat);
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-    positions.push(positions[index - 1] + 6371008.8 * 2 * Math.asin(Math.min(1, Math.sqrt(h))));
+    if (previous && previous.routeMeters < start && point.routeMeters > start) {
+      clipped.push(boundary(previous, point, start));
+    }
+    if (point.routeMeters >= start && point.routeMeters <= end) clipped.push(point);
+    if (point.routeMeters > end) {
+      if (previous && previous.routeMeters < end) clipped.push(boundary(previous, point, end));
+      break;
+    }
   }
-  const totalMeters = positions.at(-1);
+  return clipped;
+}
+
+export function buildPoiQuerySections(parsed, maxMeters = POI_QUERY_SECTION_MAX_M, overlapMeters = POI_QUERY_OVERLAP_M) {
+  const lines = [];
+  for (const edge of buildRouteGeometry(parsed)) {
+    const { sourceSegmentIndex, routeStartM, lengthM } = edge;
+    if (!lines[sourceSegmentIndex]) lines[sourceSegmentIndex] = [{ ...edge.a, routeMeters: routeStartM }];
+    lines[sourceSegmentIndex].push({ ...edge.b, routeMeters: routeStartM + lengthM });
+  }
   const sections = [];
-  for (let coreStart = 0; coreStart < totalMeters || (totalMeters === 0 && coreStart === 0); coreStart += maxMeters) {
-    const coreEnd = Math.min(totalMeters, coreStart + maxMeters);
-    const queryStart = Math.max(0, coreStart - overlapMeters);
-    const queryEnd = Math.min(totalMeters, coreEnd + overlapMeters);
-    const sectionPoints = points
-      .map((point, index) => ({ point: { ...point, routeMeters: positions[index] }, position: positions[index] }))
-      .filter(({ position }) => position >= queryStart && position <= queryEnd)
-      .map(({ point }) => point);
-    sections.push({
-      index: sections.length + 1,
-      total: Math.max(1, Math.ceil(totalMeters / maxMeters)),
-      coreStartMeters: coreStart,
-      coreEndMeters: coreEnd,
-      queryStartMeters: queryStart,
-      queryEndMeters: queryEnd,
-      points: sectionPoints.length > 0 ? sectionPoints : [points[0]],
-    });
+  for (const line of lines.filter(Boolean)) {
+    const start = line[0].routeMeters;
+    const end = line.at(-1).routeMeters;
+    for (let coreStart = start; coreStart < end; coreStart += maxMeters) {
+      const coreEnd = Math.min(end, coreStart + maxMeters);
+      const queryStart = Math.max(start, coreStart - overlapMeters);
+      const queryEnd = Math.min(end, coreEnd + overlapMeters);
+      sections.push({
+        index: sections.length + 1,
+        coreStartMeters: coreStart,
+        coreEndMeters: coreEnd,
+        queryStartMeters: queryStart,
+        queryEndMeters: queryEnd,
+        points: clipPoiQueryPoints(line, queryStart, queryEnd),
+      });
+    }
   }
-  return sections;
+  const firstPoint = parsed.segments.find((segment) => segment.length)?.[0];
+  if (!sections.length && firstPoint) {
+    sections.push({ index: 1, coreStartMeters: 0, coreEndMeters: 0, queryStartMeters: 0, queryEndMeters: 0,
+      points: [{ ...firstPoint, routeMeters: 0 }] });
+  }
+  return sections.map((section) => ({ ...section, total: sections.length }));
 }
 
 export function splitPoiQuerySection(section, minimumMeters = POI_QUERY_ADAPTIVE_MIN_M) {
@@ -61,16 +79,20 @@ export function splitPoiQuerySection(section, minimumMeters = POI_QUERY_ADAPTIVE
   if (length <= minimumMeters || section.points.length < 2) return [];
   const midpoint = section.coreStartMeters + length / 2;
   const overlap = POI_QUERY_OVERLAP_M;
-  const make = (id, coreStartMeters, coreEndMeters) => ({
-    ...section,
-    index: id,
-    parentSectionId: section.index,
-    coreStartMeters,
-    coreEndMeters,
-    queryStartMeters: Math.max(section.queryStartMeters, coreStartMeters - overlap),
-    queryEndMeters: Math.min(section.queryEndMeters, coreEndMeters + overlap),
-    points: section.points.filter((point) => point.routeMeters === undefined || (point.routeMeters >= Math.max(section.queryStartMeters, coreStartMeters - overlap) && point.routeMeters <= Math.min(section.queryEndMeters, coreEndMeters + overlap))),
-  });
+  const make = (id, coreStartMeters, coreEndMeters) => {
+    const queryStartMeters = Math.max(section.queryStartMeters, coreStartMeters - overlap);
+    const queryEndMeters = Math.min(section.queryEndMeters, coreEndMeters + overlap);
+    return {
+      ...section,
+      index: id,
+      parentSectionId: section.index,
+      coreStartMeters,
+      coreEndMeters,
+      queryStartMeters,
+      queryEndMeters,
+      points: clipPoiQueryPoints(section.points, queryStartMeters, queryEndMeters),
+    };
+  };
   return [make(`${section.index}.1`, section.coreStartMeters, midpoint), make(`${section.index}.2`, midpoint, section.coreEndMeters)];
 }
 
@@ -126,9 +148,11 @@ export async function fetchPoiSectionWithRetry(fetchSection, section, {
 } = {}) {
   let retried = false;
   while (true) {
+    if (signal?.aborted) return null;
     try {
       return await fetchSection(section, signal);
     } catch (error) {
+      if (signal?.aborted) return null;
       const rateLimited = Number(error?.status) === 429;
       if (retried || (!rateLimited && !isRetryablePoiStatus(error?.status))) throw error;
       retried = true;
@@ -138,4 +162,96 @@ export async function fetchPoiSectionWithRetry(fetchSection, section, {
       if (signal?.aborted) return null;
     }
   }
+}
+
+export function buildScopedPoiQuerySections(parsed, startMeters, endMeters, extractRange) {
+  const sections = [];
+  for (let start = startMeters; start < endMeters; start += POI_QUERY_SECTION_MAX_M) {
+    const end = Math.min(start + POI_QUERY_SECTION_MAX_M, endMeters);
+    for (const line of extractRange(parsed, start, end)) {
+      sections.push({
+        index: sections.length + 1,
+        coreStartMeters: start,
+        coreEndMeters: end,
+        queryStartMeters: start,
+        queryEndMeters: end,
+        points: line.map(([lat, lon]) => ({ lat, lon })),
+      });
+    }
+  }
+  return sections;
+}
+
+function waitForScopedQuery(delay, signal) {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, delay);
+    if (signal?.aborted) done();
+    else signal?.addEventListener('abort', done, { once: true });
+  });
+}
+
+export async function searchScopedPoiWorkloads(workloads, fetchCandidates, collect, {
+  signal,
+  onProgress = () => {},
+  sleep = waitForScopedQuery,
+} = {}) {
+  const queue = [...workloads];
+  let successful = 0;
+  let failed = 0;
+  let incomplete = 0;
+  for (const [index, workload] of queue.entries()) {
+    if (signal?.aborted) break;
+    onProgress(index + 1, queue.length);
+    let pace = true;
+    try {
+      const candidates = await fetchPoiSectionWithRetry(
+        (section, requestSignal) => fetchCandidates(workload.categories, section, requestSignal),
+        workload.section,
+        { signal, sleep: (delay) => sleep(delay, signal) },
+      );
+      if (signal?.aborted || !candidates) break;
+      collect(candidates, workload.categories);
+      pace = candidates.poiProvider !== 'overture-local';
+      successful += 1;
+      if (candidates.poiIncomplete) incomplete += 1;
+    } catch (error) {
+      if (signal?.aborted) break;
+      // Category splitting preserves the clipped geometry of each package.
+      const parts = Number(error?.status) === 504 ? splitPoiQueryWorkload(workload, Infinity) : [];
+      if (parts.length) queue.splice(index + 1, 0, ...parts);
+      else failed += 1;
+    }
+    if (pace && index + 1 < queue.length) await sleep(1000, signal);
+  }
+  return { successful, failed, incomplete, aborted: Boolean(signal?.aborted) };
+}
+
+export function mergeScopedPoiResults(existing, accepted, key) {
+  const merged = new Map(existing.map((poi) => [key(poi), poi]));
+  for (const poi of accepted) {
+    const id = key(poi);
+    const previous = merged.get(id);
+    if (!previous || previous.status !== 'match' && poi.status === 'match') merged.set(id, poi);
+  }
+  return [...merged.values()];
+}
+
+
+export function preservePoiSelections(results, snapshots, selectedIds, pinnedIds, key) {
+  const merged = new Map();
+  for (const poi of results) {
+    if (poi.status !== 'pinned' && poi.status !== 'retained') merged.set(key(poi), poi);
+  }
+  for (const poi of snapshots) {
+    const id = key(poi);
+    if (merged.has(id)) continue;
+    if (pinnedIds.has(id)) merged.set(id, { ...poi, status: 'pinned' });
+    else if (selectedIds.has(id)) merged.set(id, { ...poi, status: 'retained' });
+  }
+  return [...merged.values()];
 }

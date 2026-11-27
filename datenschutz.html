@@ -36,7 +36,7 @@
     <section>
       <h2>4. GPX-Dateien und Routenverarbeitung</h2>
       <p>Die vom Nutzer ausgewählte GPX-Datei wird clientseitig im Browser verarbeitet. Bonkproof besitzt derzeit keine Benutzerkonten und speichert die GPX-Datei nicht serverseitig als Tourdatei.</p>
-      <p>Bei der POI-Suche werden aus dem Routenverlauf Suchabschnitte beziehungsweise geografische Begrenzungsrahmen (Bounding Boxes) erzeugt. Diese enthalten keine GPX-Datei, können aber Rückschlüsse auf den räumlichen Verlauf der geplanten Route ermöglichen.</p>
+      <p>Bei der POI-Suche werden aus dem Routenverlauf Suchabschnitte beziehungsweise geografische Begrenzungsrahmen (Bounding Boxes) erzeugt. Diese enthalten keine GPX-Datei, können aber Rückschlüsse auf den räumlichen Verlauf der geplanten Route ermöglichen. Bei einer ausdrücklich gestarteten Nachsuche werden die Suchrahmen aus der ausgewählten Versorgungslücke und den gewählten Suchradien samt Toleranzbereich abgeleitet. Es gelten dieselben Suchdienste wie bei der allgemeinen POI-Suche.</p>
     </section>
 
     <section>
@@ -70,9 +70,13 @@
     </section>
 
     <section>
-      <h2>10. Cookies, Local Storage und Analyse</h2>
-      <p>Bonkproof setzt in der derzeitigen Ausbaustufe keine eigenen Analyse- oder Werbetracker ein. Der Anwendungscode verwendet derzeit weder Cookies noch Local Storage oder Session Storage zur Speicherung von Nutzerdaten. Es gibt derzeit auch keine browserseitige Standortabfrage.</p>
-      <p>Aus diesem Grund stellt Bonkproof derzeit kein Cookie- oder Tracking-Einwilligungsbanner bereit. Sollte sich die technische Nutzung von Endgerätespeichern, Tracking oder einwilligungspflichtigen Diensten ändern, wird dies vor Einführung erneut geprüft.</p>
+      <h2>10. Lokale Projekte und Analyse</h2>
+      <p>Bonkproof setzt in der derzeitigen Ausbaustufe keine eigenen Analyse- oder Werbetracker ein. Der Anwendungscode verwendet derzeit weder Cookies noch Local Storage zur Speicherung von Nutzerdaten. Es gibt derzeit auch keine browserseitige Standortabfrage.</p>
+      <p>Nach dem Speichern oder Importieren eines Projekts speichert Bonkproof auf diesem Gerät in IndexedDB unter anderem die ursprüngliche GPX-Datei mit ihren Streckenkoordinaten, gefundene Orte, gewählte Stopps, Pins und Planungseinstellungen. Änderungen an gespeicherten Projekten werden automatisch gesichert. Der aktuelle Tab kann sich über Session Storage die ID des zuletzt geöffneten Projekts merken. Beim Öffnen werden gespeicherte POIs lokal geladen. Die Karte kann bei bestehender Verbindung weiterhin Kartenausschnitte wie in Abschnitt 7 beschrieben abrufen.</p>
+      <p>Lokale Projekte werden nicht zwischen Geräten synchronisiert. Du kannst einzelne Projekte in der Projektverwaltung löschen oder alle Bonkproof-Websitedaten in den Browsereinstellungen entfernen. Browser oder Gerät können lokale Daten löschen, etwa in privaten Sitzungen oder bei Änderungen an den Speichereinstellungen. Eine ausstehende automatische Speicherung kann beim Schließen oder bei einem Browserabsturz verloren gehen. Projektdateien können dieselben GPX- und Standortdaten enthalten. Exportierte Dateien lassen sich unabhängig vom Browserspeicher über die Dateiverwaltung löschen.</p>
+      <p>Für den Offline-Start speichert ein Service Worker die statischen Anwendungsdateien von Bonkproof im Browser-Cache. Dazu gehören Programmdateien, Gestaltung, App-Symbole und Standardkonfigurationen. GPX-Daten, Projekte, externe Kartenkacheln und POI-Providerantworten gehören nicht zu diesem Anwendungscache. Ein Anwendungsupdate ersetzt den Anwendungscache. Gespeicherte Projekte bleiben in IndexedDB.</p>
+      <p>Über die Anwendung kann optional dauerhafter Browserspeicher angefragt werden. Ob er gewährt wird, entscheidet der Browser. Auch dann können lokale Daten verloren gehen, etwa durch bewusstes Löschen von Websitedaten. Ein Browser- oder Gerätewechsel übertragen Projektdateien nicht automatisch.</p>
+      <p>Die lokale Projektverwaltung verwendet die beschriebenen Speicher für die vom Nutzer gewählte Planung. Sollte sich die technische Nutzung von Endgerätespeichern, Tracking oder einwilligungspflichtigen Diensten ändern, wird dies vor Einführung erneut geprüft.</p>
     </section>
 
     <section>
