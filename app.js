@@ -1,14 +1,18 @@
 import { DEFAULT_GAP_SETTINGS, buildFoundPoiWarnings, buildGapThresholds, buildRoutebook, buildRoutebookWarnings, extractRouteGeometryRange, normalizeGapSettings, poiKey, togglePoiSelection } from './routebook.js';
-import { buildPoiQuerySections, createPoiQueryWorkloads, fetchPoiSectionWithRetry, paginatePois, POI_LIST_PAGE_SIZE, splitPoiQueryWorkload } from './poi-search.js';
+import { buildPoiQuerySections, buildScopedPoiQuerySections, createPoiQueryWorkloads, fetchPoiSectionWithRetry, mergeScopedPoiResults, paginatePois, POI_LIST_PAGE_SIZE, preservePoiSelections, searchScopedPoiWorkloads, splitPoiQueryWorkload } from './poi-search.js';
 import { clusterAccessibleLabel, clusterPoiData, clusterRingStyle, POI_CLUSTER_DISABLE_ZOOM, POI_CLUSTER_RADIUS_PX, POI_CLUSTER_SPIDERFY_ZOOM } from './poi-clustering.js';
 import { buildRouteGeometry, physicalPoiKey, projectPoiPassBys } from './poi-projection.js';
 import { buildPoiPassIndex } from './poi-pass-index.js';
 import { buildActiveCategories, buildOverpassQuery, categoryRadiusIsLoaded, defaultCategoryRadii, defaultEnabledCategoryIds, effectivePoiState, getGraceMeters, matchingCategory, poiInsideEffectiveCorridor } from './poi-config.js';
-import { filterReliableResupplyPois, filterReliableSelectedPoiIds } from './resupply-profile.js';
+import { filterReliableResupplyPois, filterReliableSelectedPoiIds, foundResupplyPois } from './resupply-profile.js';
 import { buildRoutePointSnapshots } from './export-model.js';
 import { createExportFile, downloadExportFile, sanitizeExportBaseName } from './export-core.js';
 import { EXPORT_FORMATS, EXPORT_TARGET_PROFILES, availableExportFormats, getExportProfile } from './export-profiles.js';
 import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
+import { PROJECT_FILE_MAX_BYTES, PROJECT_GPX_MAX_CHARS, snapshotProjectPoi, validateProject } from './project-format.js';
+import { createProjectStore } from './project-store.js';
+import { mountProjectWorkspace } from './project-workspace.js';
+import { mountPwa } from './pwa.js';
 
 (() => {
   const CONFIG_URL = './config/poi-categories.json';
@@ -40,6 +44,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   const routebookTab = document.getElementById('routebook-tab');
   const poiPanel = document.getElementById('poi-panel');
   const routebookPanel = document.getElementById('routebook-panel');
+  const routebookWarningOverview = document.getElementById('routebook-warning-overview');
   const routebookSummary = document.getElementById('routebook-summary');
   const routebookEmpty = document.getElementById('routebook-empty');
   const routebookList = document.getElementById('routebook-list');
@@ -53,8 +58,22 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   const exportVerification = document.getElementById('export-verification');
   const exportDownload = document.getElementById('export-download');
   const exportGapWarnings = document.getElementById('export-gap-warnings');
+  const poiWarningOverview = document.getElementById('poi-warning-overview');
   const poiWarningSummary = document.getElementById('poi-warning-summary');
   const poiWarningList = document.getElementById('poi-warning-list');
+  const scopedSearch = document.getElementById('scoped-poi-search');
+  const scopedHeading = document.getElementById('scoped-poi-heading');
+  const scopedRange = document.getElementById('scoped-poi-range');
+  const scopedForm = document.getElementById('scoped-poi-form');
+  const scopedCategories = document.getElementById('scoped-poi-categories');
+  const scopedSubmit = document.getElementById('scoped-poi-submit');
+  const scopedCancel = document.getElementById('scoped-poi-cancel');
+  const scopedStatus = document.getElementById('scoped-poi-status');
+  const scopedReview = document.getElementById('scoped-poi-review');
+  const scopedResults = document.getElementById('scoped-poi-results');
+  const connectionStatus = document.getElementById('connection-status');
+  const poiConnectionStatus = document.getElementById('poi-connection-status');
+  const mapBackgroundStatus = document.getElementById('map-background-status');
   const reloadPois = document.getElementById('reload-pois');
   const iceToggle = document.getElementById('ice-toggle');
   const iceStatus = document.getElementById('ice-status');
@@ -71,10 +90,17 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     preferCanvas: true,
   }).setView([52.5, 9.0], 6);
 
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const basemap = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map);
+  });
+  let tileFailed = false;
+  basemap.on('loading', () => { tileFailed = false; });
+  basemap.on('tileerror', () => {
+    tileFailed = true;
+    renderMapBackground();
+  });
+  basemap.on('load', renderMapBackground);
 
   const routeLayer = L.featureGroup().addTo(map);
   const poiLayer = L.featureGroup().addTo(map);
@@ -94,9 +120,19 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   let pinnedPoiSnapshots = new Map();
   let currentRouteDistanceMeters = 0;
   let currentParsedRoute = null;
+  let projectWorkspace;
+  let defaultResupplyProfile;
   let currentSourceGpxText = null;
   let currentRouteFileName = null;
   let poiSearchRunning = false;
+  let routeLoadRequest = 0;
+  let routeFileReading = false;
+  const pendingCategoryIds = new Set();
+  let scopedGap = null;
+  let scopedController = null;
+  let scopedCandidates = new Map();
+  const acceptedScopedPois = new Map();
+  const scopedConfigurations = new Map();
   let currentPoiSections = [];
   let failedPoiSections = [];
   let poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: false };
@@ -162,13 +198,41 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     });
   }
 
+  function isOffline() {
+    return navigator.onLine === false;
+  }
+
+  function setPoiConnection(message) {
+    poiConnectionStatus.textContent = message;
+    poiConnectionStatus.hidden = !message;
+  }
+
+  function renderMapBackground() {
+    const unavailable = isOffline() || tileFailed;
+    map.getContainer().classList.toggle('map-offline', unavailable);
+    mapBackgroundStatus.textContent = unavailable ? 'Hintergrundkarte nicht verfügbar. Route und gespeicherte POIs bleiben sichtbar.' : '';
+    mapBackgroundStatus.hidden = !unavailable;
+  }
+
+  function renderConnectivity() {
+    const offline = isOffline();
+    connectionStatus.textContent = offline ? 'Offline · Externe POI-Suche nicht verfügbar' : 'Online';
+    if (offline && map.hasLayer(basemap)) map.removeLayer(basemap);
+    else if (!offline && !map.hasLayer(basemap)) basemap.addTo(map);
+    reloadPois.disabled = offline || poiSearchRunning || !currentParsedRoute;
+    scopedSubmit.disabled = offline || Boolean(scopedController);
+    renderMapBackground();
+  }
+
   function setPoiSearchRunning(running) {
     poiSearchRunning = running;
-    reloadPois.disabled = running || !currentParsedRoute;
+    projectWorkspace?.availabilityChanged();
+    scopedReview.querySelector('button[type="submit"]').disabled = running;
+    reloadPois.disabled = running || !currentParsedRoute || isOffline();
     const incomplete = poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total);
     reloadPois.textContent = running
       ? 'POIs werden gesucht…'
-      : (incomplete ? 'Fehlgeschlagene Suchpakete erneut laden' : 'POIs neu laden');
+      : (incomplete && failedPoiSections.length ? 'Fehlgeschlagene Suchpakete erneut laden' : 'POIs neu laden');
     if (typeof poiWarningSummary !== 'undefined') renderWarnings();
   }
 
@@ -190,8 +254,15 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   }
 
   function clearRoute() {
+    routeLoadRequest += 1;
+    routeFileReading = false;
+    setPoiConnection('');
+    pendingCategoryIds.clear();
     poiAbortController?.abort();
+    resetScopedSearch();
     routeLayer.clearLayers();
+    pinnedPoiIds = new Set();
+    pinnedPoiSnapshots = new Map();
     currentParsedRoute = null;
     currentSourceGpxText = null;
     currentRouteFileName = null;
@@ -240,13 +311,14 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   function parsePoint(node) {
     const lat = Number.parseFloat(node.getAttribute('lat'));
     const lon = Number.parseFloat(node.getAttribute('lon'));
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
       return null;
     }
     return { lat, lon };
   }
 
   function parseGpx(xmlText) {
+    if (/<!DOCTYPE/i.test(xmlText)) throw new Error('GPX mit Dokumenttyp-Deklaration wird nicht unterstützt.');
     const parser = new DOMParser();
     const documentXml = parser.parseFromString(xmlText, 'application/xml');
 
@@ -324,6 +396,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
         criticalPercent: gapCriticalPercent.value,
       });
       gapSettings = next;
+      projectWorkspace.changed();
       gapSettingsError.hidden = true;
       gapSettingsError.textContent = '';
       gapSettingInputs.forEach((input) => input.removeAttribute('aria-invalid'));
@@ -370,12 +443,12 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   }
 
   function renderRoute(parsed, fileName, sourceGpxText) {
+    pendingCategoryIds.clear();
     poiAbortController?.abort();
+    resetScopedSearch();
     poiSearchRunning = false;
     routeLayer.clearLayers();
-    poiLayer.clearLayers();
-    poiMarkers.clear();
-    currentPois = [];
+    clearPoiUi();
     selectedPoiIds = new Set();
     pinnedPoiIds = new Set();
     pinnedPoiSnapshots = new Map();
@@ -383,7 +456,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     currentParsedRoute = parsed;
     currentSourceGpxText = sourceGpxText;
     currentRouteFileName = fileName;
-    currentPoiSections = buildPoiQuerySections(parsed);
+    currentPoiSections = [];
     failedPoiSections = [];
     poiSectionStatus = { total: currentPoiSections.length, completed: 0, failed: new Set(), started: false };
     resetPoiViewState();
@@ -584,6 +657,9 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
         categoryRadiusOverrides = defaultCategoryRadii(config);
         renderCategoryControls(config);
         return config;
+      }).catch((error) => {
+        poiConfigPromise = null;
+        throw error;
       });
     }
     return poiConfigPromise;
@@ -595,8 +671,12 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
         if (!response.ok) throw new Error(`Could not load resupply profile (${response.status}).`);
         return response.json();
       }).then((profile) => {
+        defaultResupplyProfile = profile;
         resupplyProfile = profile;
         return profile;
+      }).catch((error) => {
+        resupplyProfilePromise = null;
+        throw error;
       });
     }
     return resupplyProfilePromise;
@@ -638,12 +718,19 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     const query = buildOverpassQuery(categories, bbox);
     const body = new URLSearchParams({ data: query });
 
-    const response = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-      body,
-      signal,
-    });
+    let response;
+    try {
+      if (isOffline()) throw new TypeError('Offline');
+      response = await fetch(OVERPASS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body,
+        signal,
+      });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      throw Object.assign(new Error('Verbindung zum POI-Dienst fehlgeschlagen.', { cause: error }), { networkFailure: true });
+    }
 
     if (!response.ok) {
       const error = new Error(`OpenStreetMap POI lookup failed (${response.status}).`);
@@ -653,7 +740,9 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     }
 
     const payload = await response.json();
-    const elements = Array.isArray(payload.elements) ? payload.elements : [];
+    if (!Array.isArray(payload.elements)) throw new Error('Invalid POI provider response.');
+    const elements = payload.elements;
+    Object.defineProperty(elements, 'poiIncomplete', { value: Boolean(payload.remark) });
     Object.defineProperty(elements, 'poiProvider', {
       value: response.headers.get('X-Bonkproof-Poi-Provider') || 'overpass',
       enumerable: false,
@@ -689,6 +778,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       tags: element.tags || {},
       category,
       routeKm: projection.routeKm,
+      routeMeters: projection.routeMeters,
       offRouteM: projection.distanceM,
       status: projection.distanceM <= hardLimitM ? 'match' : 'near-miss',
       name: element.tags?.name || element.tags?.brand || category.label,
@@ -724,9 +814,12 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   function jumpToPassBy(poi) {
     const target = nextPassBy(poi);
     if (!target) return;
-    activeCategoryIds.add(target.category.id);
+    if (!acceptedScopedPois.has(poiKey(target)) && !activeCategoryIds.has(target.category.id)) {
+      activeCategoryIds.add(target.category.id);
+      projectWorkspace.changed();
+    }
     const visiblePois = currentPois
-      .filter((candidate) => activeCategoryIds.has(candidate.category.id))
+      .filter((candidate) => isPoiVisible(candidate))
       .sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
     const targetIndex = visiblePois.findIndex((candidate) => poiKey(candidate) === poiKey(target));
     if (targetIndex >= 0) poiPage = Math.floor(targetIndex / POI_LIST_PAGE_SIZE) + 1;
@@ -735,12 +828,14 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     const targetId = poiKey(target);
     const targetItem = [...poiList.querySelectorAll('.poi-list-item')]
       .find((item) => item.dataset.poiId === targetId);
+    if (targetItem) poiList.closest('details').open = true;
     targetItem?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     focusPoi(target);
   }
 
   function toggleSelection(poiId) {
     selectedPoiIds = togglePoiSelection(selectedPoiIds, poiId);
+    projectWorkspace.changed();
     renderPois(currentPois, currentCategories);
     renderRoutebook();
     renderWarnings();
@@ -752,7 +847,10 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     if (pinnedPoiIds.has(poiId)) {
       pinnedPoiIds.delete(poiId);
       pinnedPoiSnapshots.delete(poiId);
-      if (poi.status === 'pinned') currentPois = currentPois.filter((candidate) => poiKey(candidate) !== poiId);
+      if (poi.status === 'pinned') {
+        currentPois = currentPois.flatMap((candidate) => poiKey(candidate) !== poiId ? [candidate]
+          : selectedPoiIds.has(poiId) ? [{ ...candidate, status: 'retained' }] : []);
+      }
     } else {
       pinnedPoiIds.add(poiId);
       pinnedPoiSnapshots.set(poiId, { ...poi });
@@ -761,12 +859,20 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     renderRoutebook();
     renderWarnings();
     renderExportPanel();
+    projectWorkspace.changed();
   }
 
   function renderRoutebook() {
     const routebook = buildRoutebook(currentPois, selectedPoiIds, currentRouteDistanceMeters, gapSettings);
     const hasRoute = currentRouteDistanceMeters > 0;
     const hasStops = routebook.stops.length > 0;
+    const counts = { info: 0, warning: 0, critical: 0 };
+    for (const entry of routebook.entries) {
+      if (entry.gapSeverity) counts[entry.gapSeverity] += 1;
+    }
+    routebookWarningOverview.textContent = hasRoute
+      ? ` · ${counts.info} Info, ${counts.warning} Warning, ${counts.critical} Critical`
+      : '';
     const thresholds = routebook.gapThresholds || buildGapThresholds(gapSettings);
     routebookSummary.textContent = hasRoute
       ? `Longest section without a selected stop: ${formatDistance(routebook.longestGapM)}. Info > ${formatThresholdKm(thresholds.infoM)}, Warning > ${formatThresholdKm(thresholds.warningM)}, Critical > ${formatThresholdKm(thresholds.criticalM)}.`
@@ -822,7 +928,6 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     exportPanel.hidden = !showExport;
     renderMapPois();
     renderWarnings();
-    renderWarningLayer();
     if (showRoutebook) renderRoutebook();
     if (showExport) renderExportPanel();
   }
@@ -841,7 +946,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
 
   function renderPoiMarker(poi, latLng = [poi.lat, poi.lon]) {
     const poiId = poiKey(poi);
-    const statusText = poi.status === 'near-miss' ? 'Near miss' : (poi.status === 'pinned' ? 'Behalten aus vorheriger Suche' : 'Inside corridor');
+    const statusText = poi.status === 'near-miss' ? 'Near miss' : (poi.status === 'pinned' ? 'Behalten aus vorheriger Suche' : (poi.status === 'retained' ? 'Ausgewählt aus vorheriger Suche' : 'Inside corridor'));
     const selected = selectedPoiIds.has(poiId);
     const pinned = pinnedPoiIds.has(poiId);
     const nextPass = nextPassBy(poi);
@@ -860,11 +965,12 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     `;
     const marker = L.marker(latLng, { icon: poiMarkerIcon(poi), title: poi.name, keyboard: true }).bindPopup(popup).addTo(poiLayer);
     marker.on('popupopen', () => {
-      const selectionButton = map.getContainer().querySelector(`[data-poi-id="${poiId}"]`);
+      const selectorId = CSS.escape(poiId);
+      const selectionButton = map.getContainer().querySelector(`[data-poi-id="${selectorId}"]`);
       selectionButton?.addEventListener('click', () => toggleSelection(poiId), { once: true });
-      const pinButton = map.getContainer().querySelector(`[data-pin-id="${poiId}"]`);
+      const pinButton = map.getContainer().querySelector(`[data-pin-id="${selectorId}"]`);
       pinButton?.addEventListener('click', () => togglePin(poi), { once: true });
-      const passButton = map.getContainer().querySelector(`[data-pass-jump="${poiId}"]`);
+      const passButton = map.getContainer().querySelector(`[data-pass-jump="${selectorId}"]`);
       passButton?.addEventListener('click', () => jumpToPassBy(poi), { once: true });
     });
     poiMarkers.set(poiId, marker);
@@ -877,8 +983,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   }
 
   function activeFoundResupplyPois() {
-    const visible = currentPois.filter((poi) => activeCategoryIds.has(poi.category.id) && poi.status !== 'pinned');
-    return filterReliableResupplyPois(visible, resupplyProfile);
+    return foundResupplyPois(currentPois, acceptedScopedPois.values(), activeCategoryIds, categoryRadiusMeters, resupplyProfile, poiKey);
   }
 
   function renderWarningLayer() {
@@ -897,6 +1002,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
 
   function renderWarnings() {
     if (!currentParsedRoute) {
+      poiWarningOverview.textContent = '';
       poiWarningSummary.hidden = true;
       poiWarningList.hidden = true;
       renderWarningLayer();
@@ -904,6 +1010,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     }
     if (activeTab !== 'routebook' && poiSearchRunning) {
       poiWarningSummary.hidden = false;
+      if (poiWarningOverview.textContent !== ' · Prüfung läuft') poiWarningOverview.textContent = ' · Prüfung läuft';
       poiWarningSummary.className = 'warning-summary is-pending';
       poiWarningSummary.textContent = 'Versorgungslücken werden geprüft …';
       poiWarningList.hidden = true;
@@ -913,8 +1020,9 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     }
     if (activeTab !== 'routebook' && poiSectionStatus.started && (poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total)) {
       poiWarningSummary.hidden = false;
+      poiWarningOverview.textContent = ' · Prüfung unvollständig';
       poiWarningSummary.className = 'warning-summary is-incomplete';
-      poiWarningSummary.textContent = `Prüfung unvollständig – ${failedPoiSections.length} Suchpaket${failedPoiSections.length === 1 ? '' : 'e'} konnten selbst nach automatischer Verkleinerung nicht geladen werden.`;
+      poiWarningSummary.textContent = `Prüfung unvollständig – ${failedPoiSections.length ? `${failedPoiSections.length} Suchpaket${failedPoiSections.length === 1 ? '' : 'e'} mit fehlgeschlagenen oder unvollständigen Antworten.` : 'Der gespeicherte Suchstand ist unvollständig. Eine neue Gesamtsuche kann ihn aktualisieren.'}`;
       poiWarningList.hidden = true;
       poiWarningList.innerHTML = '';
       renderWarningLayer();
@@ -930,6 +1038,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     const counts = { info: 0, warning: 0, critical: 0 };
     warnings.forEach((warning) => { counts[warning.severity] += 1; });
     poiWarningSummary.hidden = false;
+    const overview = ` · ${counts.info} Info, ${counts.warning} Warning, ${counts.critical} Critical`;
+    if (poiWarningOverview.textContent !== overview) poiWarningOverview.textContent = overview;
     poiWarningSummary.className = 'warning-summary';
     poiWarningSummary.textContent = `${warnings.length} Versorgungslücke${warnings.length === 1 ? '' : 'n'} ab Info-Schwelle; ${counts.info} Info, ${counts.warning} Warning, ${counts.critical} Critical. Längster Abschnitt: ${formatDistance(longestGapM)}. Grundlage: ${foundCount} verlässliche Versorgungspunkte. Schwellen: ${formatThresholdKm(gapThresholds.infoM)} / ${formatThresholdKm(gapThresholds.warningM)} / ${formatThresholdKm(gapThresholds.criticalM)}. Near misses zählen nicht.`;
     poiWarningList.innerHTML = '';
@@ -937,7 +1047,11 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     warnings.forEach((warning) => {
       const item = document.createElement('li');
       item.className = `warning-item severity-${warning.severity}`;
-      item.innerHTML = `<span><strong>${warning.severity.toUpperCase()} · ${escapeHtml(warning.from)} → ${escapeHtml(warning.to)}</strong><small>${formatDistance(warning.lengthM)} ohne gefundenen POI</small></span><button class="warning-focus" type="button">Focus</button>`;
+      item.innerHTML = `<span><strong>${warning.severity.toUpperCase()} · ${escapeHtml(warning.from)} → ${escapeHtml(warning.to)}</strong><small>${formatDistance(warning.lengthM)} ohne gefundenen POI</small></span><div class="warning-actions"><button class="warning-focus" type="button">Focus</button><button class="warning-focus scoped-poi-open" type="button">Hier nachsuchen</button></div>`;
+      const searchButton = item.querySelector('.scoped-poi-open');
+      searchButton.disabled = !poiConfig;
+      searchButton.setAttribute('aria-label', `POIs nachsuchen von ${formatRouteKm(warning.startMeters)} bis ${formatRouteKm(warning.endMeters)}`);
+      searchButton.addEventListener('click', () => openScopedSearch(warning));
       item.querySelector('button').addEventListener('click', () => {
         const geometry = extractRouteGeometryRange(currentParsedRoute, warning.startMeters, warning.endMeters);
         const points = geometry.flat();
@@ -947,6 +1061,171 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     });
     renderWarningLayer();
   }
+
+  function setScopedSearchRunning(running) {
+    scopedCategories.disabled = running;
+    scopedSubmit.disabled = running || isOffline();
+    scopedCancel.hidden = !running;
+  }
+
+  function resetScopedSearch() {
+    scopedController?.abort();
+    scopedController = null;
+    scopedGap = null;
+    acceptedScopedPois.clear();
+    scopedConfigurations.clear();
+    scopedCandidates.clear();
+    scopedSearch.hidden = true;
+    scopedReview.hidden = true;
+    scopedResults.replaceChildren();
+    scopedStatus.textContent = '';
+    setScopedSearchRunning(false);
+  }
+
+  function openScopedSearch(warning) {
+    const key = `${warning.startMeters}/${warning.endMeters}`;
+    if (scopedGap?.key !== key) {
+      scopedController?.abort();
+      scopedController = null;
+      setScopedSearchRunning(false);
+      scopedGap = { key, startMeters: warning.startMeters, endMeters: warning.endMeters };
+      scopedReview.hidden = true;
+      scopedResults.replaceChildren();
+      scopedCandidates.clear();
+      scopedStatus.textContent = '';
+      scopedRange.textContent = `${formatRouteKm(warning.startMeters)} bis ${formatRouteKm(warning.endMeters)}`;
+      scopedCategories.querySelectorAll('.scoped-category').forEach((row) => row.remove());
+      const saved = scopedConfigurations.get(key);
+      for (const category of poiConfig.categories) {
+        const row = document.createElement('div');
+        row.className = 'scoped-category';
+        const label = escapeHtml(category.label);
+        const radius = saved?.radii.get(category.id) ?? categoryRadiusMeters(category.id);
+        row.innerHTML = `
+          <label><input type="checkbox" name="category" value="${escapeHtml(category.id)}" ${saved?.enabled.has(category.id) ? 'checked' : ''}> ${label}</label>
+          <label><input type="number" aria-label="Suchradius für ${label} in Metern" min="50" max="20000" step="1" value="${radius}"> m</label>
+        `;
+        scopedCategories.appendChild(row);
+      }
+    }
+    scopedSearch.hidden = false;
+    scopedHeading.focus();
+  }
+
+  scopedForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!scopedGap || scopedController) return;
+    if (isOffline()) {
+      setPoiConnection('Nachsuche offline nicht verfügbar. Gespeicherte POIs bleiben verfügbar.');
+      return;
+    }
+    setPoiConnection('');
+    const enabled = new Set();
+    const radii = new Map();
+    for (const row of scopedCategories.querySelectorAll('.scoped-category')) {
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      const radius = row.querySelector('input[type="number"]').valueAsNumber;
+      if (checkbox.checked) {
+        if (!Number.isFinite(radius)) {
+          scopedStatus.textContent = 'Bitte für jede ausgewählte Kategorie einen Suchradius eingeben.';
+          return;
+        }
+        enabled.add(checkbox.value);
+      }
+      if (Number.isFinite(radius)) radii.set(checkbox.value, radius);
+    }
+    if (!enabled.size) {
+      scopedStatus.textContent = 'Bitte mindestens eine Kategorie auswählen.';
+      return;
+    }
+
+    const { startMeters, endMeters, key } = scopedGap;
+    scopedConfigurations.set(key, { enabled, radii });
+    projectWorkspace.changed();
+    const geometry = buildRouteGeometry(currentParsedRoute);
+    const sections = buildScopedPoiQuerySections(currentParsedRoute, startMeters, endMeters, extractRouteGeometryRange);
+    const categories = buildActiveCategories(poiConfig, enabled, radii);
+    const controller = new AbortController();
+    scopedController = controller;
+    scopedCandidates.clear();
+    scopedResults.replaceChildren();
+    scopedReview.hidden = true;
+    setScopedSearchRunning(true);
+    scopedCancel.focus();
+
+    let scopedNetworkFailures = 0;
+    const { successful, failed, incomplete, aborted } = await searchScopedPoiWorkloads(
+      createPoiQueryWorkloads(sections, categories),
+      async (requested, section, signal) => {
+        try {
+          return await fetchOsmCandidates(requested, section, poiConfig, signal);
+        } catch (error) {
+          if (error?.networkFailure) scopedNetworkFailures += 1;
+          throw error;
+        }
+      },
+      (elements, requested) => {
+        for (const element of elements) {
+          for (const poi of normalizePoiPassBys(element, requested, geometry, poiConfig)) {
+            if (poi.routeMeters < startMeters - 0.001 || poi.routeMeters > endMeters + 0.001) continue;
+            const id = poiKey(poi);
+            const previous = scopedCandidates.get(id);
+            if (!previous || previous.status !== 'match' && poi.status === 'match') scopedCandidates.set(id, poi);
+          }
+        }
+      },
+      {
+        signal: controller.signal,
+        onProgress: (index, total) => { scopedStatus.textContent = `Suchpaket ${index} von ${total} läuft …`; },
+      },
+    );
+    if (scopedController !== controller) return;
+    scopedController = null;
+    if (scopedNetworkFailures) setPoiConnection('Nachsuche: Verbindung zum POI-Dienst fehlgeschlagen.');
+    else if (failed || incomplete) setPoiConnection('Nachsuche: POI-Dienst meldet einen Fehler oder unvollständige Daten.');
+    const returnFocus = document.activeElement === scopedCancel;
+    setScopedSearchRunning(false);
+    if (returnFocus) scopedSubmit.focus();
+    const results = [...scopedCandidates.values()].sort((a, b) => a.routeKm - b.routeKm);
+    for (const poi of results) {
+      const id = poiKey(poi);
+      const row = document.createElement('li');
+      const accepted = acceptedScopedPois.get(id);
+      const known = accepted && (accepted.status === 'match' || poi.status !== 'match');
+      row.innerHTML = `<label><input type="checkbox" name="pass" value="${escapeHtml(id)}" ${known ? 'disabled' : ''}>
+        <strong>${escapeHtml(poi.name)}</strong> · ${escapeHtml(poi.category.label)} · ${formatRouteKm(poi.routeMeters)}
+        · ${Math.round(poi.offRouteM)} m abseits${poi.status === 'near-miss' ? ' · Near miss' : ''}${known ? ' · bereits übernommen' : ''}</label>`;
+      scopedResults.appendChild(row);
+    }
+    scopedReview.hidden = results.length === 0;
+    const outcome = aborted ? 'Nachsuche abgebrochen.' : !sections.length ? 'Keine durchsuchbare Streckengeometrie.'
+      : failed || incomplete ? (successful ? 'Nachsuche teilweise erfolgreich.' : 'Nachsuche fehlgeschlagen.') : 'Nachsuche abgeschlossen.';
+    scopedStatus.textContent = `${outcome} ${successful} Suchpakete mit Antwort, ${failed} fehlgeschlagen, ${incomplete} mit unvollständiger Antwort. ${results.length} Vorbeifahrten zur Prüfung.`;
+  });
+
+  scopedCancel.addEventListener('click', () => scopedController?.abort());
+
+  scopedReview.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (poiSearchRunning) return;
+    const checked = [...scopedResults.querySelectorAll('input:checked:not(:disabled)')];
+    if (!checked.length) {
+      scopedStatus.textContent = 'Bitte mindestens eine Vorbeifahrt zur Übernahme auswählen.';
+      return;
+    }
+    for (const input of checked) {
+      acceptedScopedPois.set(input.value, { ...scopedCandidates.get(input.value), scoped: true, scopeKey: scopedGap.key });
+      input.checked = false;
+      input.disabled = true;
+      input.parentElement.append(' · übernommen');
+    }
+    renderPois(currentPois, currentCategories);
+    renderWarnings();
+    renderRoutebook();
+    renderExportPanel();
+    projectWorkspace.changed();
+    scopedStatus.textContent = `${checked.length} Vorbeifahrten in die POI-Liste übernommen. Dort kannst du sie als Stopps auswählen oder pinnen.`;
+  });
 
   function spiderfyCluster(cluster) {
     const center = map.latLngToLayerPoint([cluster.center.lat, cluster.center.lon]);
@@ -961,6 +1240,8 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
 
   function isPoiVisible(poi, effectiveState = currentEffectivePoiState()) {
     if (pinnedPoiIds.has(poiKey(poi)) || selectedPoiIds.has(poiKey(poi))) return true;
+    if (acceptedScopedPois.has(poiKey(poi))) return true;
+    if (poi.status === 'retained' || poi.status === 'pinned') return false;
     if (!effectiveState.enabledIds.has(poi.category.id)) return false;
     const configured = poiConfig?.categories.find((category) => category.id === poi.category.id) || poi.category;
     const radiusM = effectiveState.radiusOverrides.get(poi.category.id) ?? configured.defaultRadiusM;
@@ -997,6 +1278,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   }
 
   function renderPois(pois, categories) {
+    pois = mergeScopedPoiResults(pois, acceptedScopedPois.values(), poiKey);
     poiPassIndex = buildPoiPassIndex(pois, physicalPoiKey);
     currentPois = pois;
     currentCategories = categories;
@@ -1038,7 +1320,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       item.innerHTML = `
         <div class="poi-list-primary">
           <button type="button" class="poi-list-button">
-            <span class="poi-list-main"><strong>${escapeHtml(poi.name)}</strong><small>${escapeHtml(poi.category.label)} · ${Math.round(poi.offRouteM)} m off route${passText}</small></span>
+            <span class="poi-list-main"><strong>${escapeHtml(poi.name)}</strong><small>${escapeHtml(poi.category.label)} · ${Math.round(poi.offRouteM)} m off route${passText}${acceptedScopedPois.has(poiId) ? ' · Nachsuche' : ''}</small></span>
             <span class="route-km">km ${poi.routeKm.toFixed(1)}</span>
           </button>
           ${nextPass ? `<button type="button" class="poi-pass-jump">Nächste Vorbeifahrt · km ${nextPass.routeKm.toFixed(1)}</button>` : ''}
@@ -1077,18 +1359,28 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   }
 
   async function loadPois(parsed, preserveSelection = false, retryFailedOnly = false, requestedCategoryIds = null, replaceCategoryIds = null) {
-    if (poiSearchRunning) return;
+    if (isOffline()) {
+      setPoiConnection('Externe POI-Suche offline nicht verfügbar. Der lokale Planungsstand bleibt erhalten.');
+      return;
+    }
+    if (poiSearchRunning) {
+      requestedCategoryIds?.forEach((id) => pendingCategoryIds.add(id));
+      return;
+    }
     const previousSelection = preserveSelection ? new Set(selectedPoiIds) : new Set();
     const previousPins = preserveSelection ? new Set(pinnedPoiIds) : new Set();
     const previousPinnedSnapshots = preserveSelection
       ? new Map(currentPois.filter((poi) => previousPins.has(poiKey(poi))).map((poi) => [poiKey(poi), { ...poi }]))
       : new Map();
+    const previousPois = currentPois;
+    const previousSectionStatus = poiSectionStatus;
+    setPoiConnection('');
     setPoiSearchRunning(true);
     poiAbortController?.abort();
     poiAbortController = new AbortController();
     const { signal } = poiAbortController;
     const incremental = Array.isArray(requestedCategoryIds) && requestedCategoryIds.length > 0;
-    if (!retryFailedOnly && !incremental) clearPoiUi();
+    let planningChanged = false;
     selectedPoiIds = previousSelection;
     pinnedPoiIds = previousPins;
     pinnedPoiSnapshots = previousPinnedSnapshots;
@@ -1103,25 +1395,35 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       const categories = buildActiveCategories(config, queryCategoryIds, effectiveState.radiusOverrides);
       poiCategories.hidden = false;
       if (categories.length === 0) {
+        loadedCategoryRadii.clear();
         failedPoiSections = [];
         poiSectionStatus = { total: 0, completed: 0, failed: new Set(), started: true };
-        const pinnedFallbacks = [...pinnedPoiSnapshots.values()].map((poi) => ({ ...poi, status: 'pinned' }));
-        renderPois(pinnedFallbacks, config.categories);
+        renderPois(preservePoiSelections([], previousPois, selectedPoiIds, pinnedPoiIds, poiKey), config.categories);
+        renderRoutebook();
+        planningChanged = true;
         return;
       }
 
       const geometry = buildRouteGeometry(parsed);
-      const pinnedFallbacks = [...pinnedPoiSnapshots.entries()].map(([id, poi]) => [id, { ...poi, status: 'pinned' }]);
       const replacedIds = new Set(replaceCategoryIds || []);
       const previousUnrelatedFailures = incremental
-        ? failedPoiSections.filter((workload) => !workload.categories.some((category) => queryCategoryIds.has(category.id)))
+        ? failedPoiSections.map((workload) => ({
+          ...workload,
+          categories: workload.categories.filter((category) => !queryCategoryIds.has(category.id)),
+        })).filter((workload) => workload.categories.length > 0)
         : [];
-      const deduped = new Map([...(retryFailedOnly || incremental ? currentPois : []).map((poi) => [poiKey(poi), poi]), ...pinnedFallbacks]);
+      const deduped = new Map((retryFailedOnly || incremental ? currentPois : []).map((poi) => [poiKey(poi), poi]));
       const freshQueriedPois = new Map();
       const workloads = retryFailedOnly
-        ? [...failedPoiSections]
-        : createPoiQueryWorkloads(currentPoiSections, categories);
+        ? failedPoiSections.map((workload) => ({
+          ...workload,
+          categories: workload.categories.filter((category) => effectiveState.enabledIds.has(category.id)),
+        })).filter((workload) => workload.categories.length > 0)
+        : createPoiQueryWorkloads(currentPoiSections.length ? currentPoiSections
+          : (currentPoiSections = buildPoiQuerySections(parsed)), categories);
       const failedWorkloads = [];
+      let incompleteWorkloadCount = 0;
+      let networkFailures = 0;
       poiSectionStatus = { total: workloads.length, completed: 0, failed: new Set(), started: true };
 
       for (let workloadPosition = 0; workloadPosition < workloads.length; workloadPosition += 1) {
@@ -1144,7 +1446,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
               sleep: (delay) => waitForPoiBackoff(delay, section, signal, rateLimited),
             },
           );
-          if (!candidates) return;
+          if (signal.aborted || !candidates) return;
           paceAfterWorkload = candidates.poiProvider !== 'overture-local';
           candidates.forEach((element) => {
             normalizePoiPassBys(element, workloadCategories, geometry, config).forEach((poi) => {
@@ -1152,16 +1454,26 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
               const freshExisting = freshQueriedPois.get(key);
               if (!freshExisting || poi.offRouteM < freshExisting.offRouteM) freshQueriedPois.set(key, poi);
               const existing = deduped.get(key);
-              if (incremental || !existing || existing.status === 'pinned' || poi.offRouteM < existing.offRouteM) {
+              if (incremental || !existing || existing.status === 'pinned' || existing.status === 'retained' || poi.offRouteM < existing.offRouteM) {
                 deduped.set(key, poi);
                 if (pinnedPoiIds.has(key)) pinnedPoiSnapshots.set(key, { ...poi });
               }
             });
           });
           poiSectionStatus.completed += 1;
-          poiSectionStatus.failed.delete(workload.id);
+          if (candidates.poiIncomplete) {
+            failedWorkloads.push(workload);
+            incompleteWorkloadCount += 1;
+            poiSectionStatus.failed.add(workload.id);
+          } else {
+            poiSectionStatus.failed.delete(workload.id);
+          }
         } catch (error) {
-          if (error?.name === 'AbortError') return;
+          if (signal.aborted) return;
+          if (error?.networkFailure) {
+            networkFailures += 1;
+            if (isOffline()) paceAfterWorkload = false;
+          }
           const replacements = Number(error?.status) === 504 ? splitPoiQueryWorkload(workload) : [];
           if (replacements.length > 0) {
             poiSectionStatus.total += replacements.length - 1;
@@ -1177,36 +1489,72 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
         if (paceAfterWorkload && workloadPosition < workloads.length - 1) await waitForPoiBackoff(1000, section, signal);
       }
 
+      if (signal.aborted) return;
+      if (networkFailures) {
+        setPoiConnection('Verbindung zum POI-Dienst fehlgeschlagen. Vorhandene POIs bleiben erhalten.');
+      } else if (failedWorkloads.length) {
+        setPoiConnection('POI-Dienst meldet einen Fehler oder unvollständige Daten. Vorhandene POIs bleiben erhalten.');
+      }
+      if (failedWorkloads.length && failedWorkloads.length === poiSectionStatus.completed
+          && !freshQueriedPois.size && preserveSelection && previousSectionStatus.started) {
+        poiSectionStatus = previousSectionStatus;
+        setPoiStatus('Keine neuen Suchdaten. Der lokale Planungsstand bleibt erhalten.');
+        return;
+      }
       let finalPois = deduped;
+      if (failedWorkloads.length) {
+        for (const poi of previousPois) {
+          const key = poiKey(poi);
+          if (!finalPois.has(key)) finalPois.set(key, poi);
+        }
+      } else if (!retryFailedOnly && !incremental) loadedCategoryRadii.clear();
       if (incremental && replacedIds.size > 0 && failedWorkloads.length === 0) {
         finalPois = new Map(currentPois
           .filter((poi) => !replacedIds.has(poi.category.id))
           .map((poi) => [poiKey(poi), poi]));
-        pinnedFallbacks.forEach(([id, poi]) => finalPois.set(id, poi));
         freshQueriedPois.forEach((poi, id) => finalPois.set(id, poi));
       }
-      const pois = Array.from(finalPois.values()).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
+      const preserved = preservePoiSelections(finalPois.values(),
+        [...pinnedPoiSnapshots.values(), ...currentPois, ...previousPois], selectedPoiIds, pinnedPoiIds, poiKey);
+      const pois = mergeScopedPoiResults(preserved, acceptedScopedPois.values(), poiKey).sort((a, b) => a.routeKm - b.routeKm || a.offRouteM - b.offRouteM);
       selectedPoiIds = new Set([...selectedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
       pinnedPoiIds = new Set([...pinnedPoiIds].filter((id) => pois.some((poi) => poiKey(poi) === id)));
       failedPoiSections = incremental ? [...previousUnrelatedFailures, ...failedWorkloads] : failedWorkloads;
-      if (failedWorkloads.length === 0) {
-        categories.forEach((category) => loadedCategoryRadii.set(category.id, Math.max(loadedCategoryRadii.get(category.id) || 0, category.radiusM)));
-      } else {
-        categories.forEach((category) => loadedCategoryRadii.delete(category.id));
+      poiSectionStatus.failed = new Set(failedPoiSections);
+      const searchedRadii = new Map();
+      for (const workload of workloads) {
+        for (const category of workload.categories) {
+          searchedRadii.set(category.id, Math.min(searchedRadii.get(category.id) ?? Infinity, category.radiusM));
+        }
+      }
+      const incompleteCategories = new Set(failedPoiSections.flatMap((workload) => workload.categories.map(({ id }) => id)));
+      for (const [id, radius] of searchedRadii) {
+        if (!incompleteCategories.has(id)) loadedCategoryRadii.set(id, radius);
       }
       renderPois(pois, config.categories);
+      planningChanged = true;
+      renderRoutebook();
+      renderExportPanel();
       setPoiStatus(
         failedPoiSections.length > 0
-          ? `POI-Suche teilweise erfolgreich: ${failedPoiSections.length} Suchpaket${failedPoiSections.length === 1 ? '' : 'e'} endgültig fehlgeschlagen. ${pois.length} POIs aus erfolgreichen Paketen verfügbar.`
+          ? `POI-Suche teilweise erfolgreich: ${failedPoiSections.length} Suchpaket${failedPoiSections.length === 1 ? '' : 'e'} fehlgeschlagen oder unvollständig (${incompleteWorkloadCount} unvollständige Antworten in dieser Suche). ${pois.length} POIs verfügbar.`
           : `${pois.length} POIs vollständig geladen (${poiSectionStatus.completed} Suchpakete verarbeitet).`,
       );
     } catch (error) {
-      if (error?.name === 'AbortError') return;
+      if (signal.aborted) return;
+      poiSectionStatus = previousSectionStatus;
       console.error(error);
       setPoiStatus('The route is loaded, but the POI lookup failed. You can keep using the route view and try again with another GPX later.');
       showError(error instanceof Error ? error.message : 'Could not load route POIs.');
     } finally {
-      if (!signal.aborted) setPoiSearchRunning(false);
+      if (!signal.aborted) {
+        setPoiSearchRunning(false);
+        if (planningChanged) projectWorkspace.changed();
+        const { enabledIds } = currentEffectivePoiState();
+        const pending = [...pendingCategoryIds].filter((id) => enabledIds.has(id) && !categoryIsLoaded(id));
+        pendingCategoryIds.clear();
+        if (pending.length) void loadPois(parsed, true, false, pending, pending);
+      }
     }
   }
 
@@ -1217,14 +1565,23 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
       return;
     }
 
+    const request = ++routeLoadRequest;
+    routeFileReading = true;
     try {
+      if (file.size > PROJECT_FILE_MAX_BYTES) throw new Error('Die GPX-Datei überschreitet 128 MiB.');
       const text = await file.text();
+      if (request !== routeLoadRequest) return;
+      if (text.length > PROJECT_GPX_MAX_CHARS) throw new Error('Der GPX-Text überschreitet das Projektlimit.');
       const parsed = parseGpx(text);
       renderRoute(parsed, file.name, text);
+      projectWorkspace.changed();
       await loadPois(parsed);
     } catch (error) {
+      if (request !== routeLoadRequest) return;
       console.error(error);
       showError(error instanceof Error ? error.message : 'Could not read this GPX file.');
+    } finally {
+      if (request === routeLoadRequest) routeFileReading = false;
     }
   }
 
@@ -1262,6 +1619,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     const enabling = !activeCategoryIds.has(categoryId);
     if (enabling) activeCategoryIds.add(categoryId);
     else activeCategoryIds.delete(categoryId);
+    projectWorkspace.changed();
     poiPage = 1;
     if (poiConfig) renderCategoryControls(poiConfig);
     if (enabling && currentParsedRoute && !categoryIsLoaded(categoryId)) {
@@ -1285,6 +1643,7 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     }
     categoryRadiusOverrides.set(categoryId, radiusM);
     if (radiusM === previousRadiusM) return;
+    projectWorkspace.changed();
     const effectiveState = currentEffectivePoiState();
     if (effectiveState.enabledIds.has(categoryId) && currentParsedRoute && !categoryIsLoaded(categoryId)) {
       loadPois(currentParsedRoute, true, false, [categoryId], [categoryId]);
@@ -1304,6 +1663,13 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
     poiPage += 1;
     renderPois(currentPois, currentCategories);
   });
+  document.getElementById('warnings-shortcut').addEventListener('click', () => {
+    setActiveTab('pois');
+    const details = poiWarningList.closest('details');
+    details.open = true;
+    details.querySelector('summary').focus();
+    details.scrollIntoView({ block: 'nearest' });
+  });
   poisTab.addEventListener('click', () => setActiveTab('pois'));
   routebookTab.addEventListener('click', () => setActiveTab('routebook'));
   exportTab.addEventListener('click', () => {
@@ -1312,6 +1678,9 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   exportTarget.addEventListener('change', renderExportPanel);
   exportFormat.addEventListener('change', renderExportPanel);
   exportGapWarnings.addEventListener('change', renderExportPanel);
+  for (const input of [exportTarget, exportFormat, exportGapWarnings]) {
+    input.addEventListener('change', () => projectWorkspace.changed());
+  }
   exportDownload.addEventListener('click', () => {
     try {
       downloadCurrentRouteExport(exportFormat.value);
@@ -1342,12 +1711,123 @@ import { buildCriticalGapExportPoints } from './export-gap-warnings.js';
   });
 
   window.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !routeCard.hidden) clearRoute();
+    if (event.key === 'Escape' && !routeCard.hidden && !event.defaultPrevented
+        && !event.target.closest?.('#project-workspace')) {
+      if (projectWorkspace.isStored() && !window.confirm('Die Route aus dem gespeicherten Projekt entfernen?')) return;
+      clearRoute();
+      projectWorkspace.changed();
+    }
   });
 
-  renderGapSettingsPreview();
-  Promise.all([getPoiConfig(), getResupplyProfile()]).catch((error) => {
-    console.error(error);
-    showError(error instanceof Error ? error.message : 'Could not load Bonkproof configuration.');
+  function captureProjectState() {
+    const incomplete = poiSectionStatus.failed.size > 0 || poiSectionStatus.completed < poiSectionStatus.total;
+    return {
+      projectionVersion: 1,
+      route: currentParsedRoute ? { fileName: currentRouteFileName, gpx: currentSourceGpxText } : null,
+      global: {
+        enabled: [...activeCategoryIds],
+        radii: [...categoryRadiusOverrides],
+        loadedRadii: [...loadedCategoryRadii],
+        coverage: poiSectionStatus.started ? (incomplete ? 'incomplete' : 'complete') : 'unsearched',
+      },
+      scopes: [...scopedConfigurations].map(([key, { enabled, radii }]) => {
+        const [start, end] = key.split('/').map(Number);
+        return { start, end, enabled: [...enabled], radii: [...radii] };
+      }),
+      pois: currentPois.map(snapshotProjectPoi),
+      accepted: [...acceptedScopedPois.values()].map(snapshotProjectPoi),
+      selected: [...selectedPoiIds],
+      pins: [...pinnedPoiIds],
+      gaps: { ...gapSettings },
+      resupply: [...(resupplyProfile?.reliableCategoryIds ?? [])],
+      exportOptions: { target: exportTarget.value || 'generic', format: exportFormat.value || 'gpx', gaps: exportGapWarnings.checked },
+    };
+  }
+
+  async function prepareProject(project) {
+    const prepared = validateProject(project, parseGpx);
+    await Promise.all([getPoiConfig(), getResupplyProfile()]);
+    return prepared;
+  }
+
+  function applyProject(prepared) {
+    routeLoadRequest += 1;
+    routeFileReading = false;
+    setPoiConnection('');
+    const state = prepared?.project.state;
+    if (prepared?.parsedRoute) {
+      renderRoute(prepared.parsedRoute, state.route.fileName, state.route.gpx);
+    } else clearRoute();
+
+    gapSettings = { ...(state?.gaps ?? DEFAULT_GAP_SETTINGS) };
+    [gapCriticalKm.value, gapInfoPercent.value, gapWarningPercent.value, gapCriticalPercent.value] = [
+      gapSettings.criticalDistanceKm, gapSettings.infoPercent, gapSettings.warningPercent, gapSettings.criticalPercent,
+    ];
+    gapSettingsError.hidden = true;
+    gapSettingInputs.forEach((input) => input.removeAttribute('aria-invalid'));
+    resupplyProfile = state ? { reliableCategoryIds: state.resupply } : defaultResupplyProfile;
+    if (state) {
+      activeCategoryIds = new Set(state.global.enabled);
+      categoryRadiusOverrides = new Map(state.global.radii);
+      loadedCategoryRadii = new Map(state.global.loadedRadii);
+      selectedPoiIds = new Set(state.selected);
+      pinnedPoiIds = new Set(state.pins);
+      for (const scope of state.scopes) {
+        scopedConfigurations.set(`${scope.start}/${scope.end}`, { enabled: new Set(scope.enabled), radii: new Map(scope.radii) });
+      }
+      const restorePoi = (poi) => ({ ...snapshotProjectPoi(poi), routeMeters: poi.routeKm * 1000 });
+      for (const hit of state.accepted) acceptedScopedPois.set(poiKey(hit), restorePoi(hit));
+      const pois = state.pois.map(restorePoi);
+      pinnedPoiSnapshots = new Map([...pois, ...acceptedScopedPois.values()]
+        .filter((poi) => pinnedPoiIds.has(poiKey(poi))).map((poi) => [poiKey(poi), poi]));
+      poiSectionStatus = { total: 0, completed: 0, failed: new Set(state.global.coverage === 'incomplete' ? ['restored'] : []),
+        started: state.global.coverage !== 'unsearched' };
+      renderCategoryControls(poiConfig);
+      if (prepared.parsedRoute) renderPois(pois, poiConfig.categories);
+    }
+    populateExportTargets();
+    exportTarget.value = getExportProfile(state?.exportOptions.target).id;
+    syncExportFormats(exportTarget.value);
+    if (availableExportFormats(exportTarget.value).includes(state?.exportOptions.format)) exportFormat.value = state.exportOptions.format;
+    exportGapWarnings.checked = state?.exportOptions.gaps ?? false;
+    renderGapSettingsPreview();
+    renderRoutebook();
+    setActiveTab('pois');
+    setPoiSearchRunning(false);
+    renderExportPanel();
+    if (prepared?.parsedRoute) setPoiStatus('Lokaler Planungsstand geladen. POIs können bei Bedarf neu gesucht werden.');
+  }
+
+  projectWorkspace = mountProjectWorkspace(document.getElementById('project-workspace'), {
+    store: createProjectStore(),
+    capture: captureProjectState,
+    verify: (project) => validateProject(project, () => currentParsedRoute),
+    prepare: prepareProject,
+    apply: applyProject,
+    canCapture: () => Boolean(poiConfig && resupplyProfile) && !poiSearchRunning,
+    download: (project) => {
+      const content = JSON.stringify(project);
+      if (new Blob([content]).size > PROJECT_FILE_MAX_BYTES) throw new Error('Die Projektdatei überschreitet 128 MiB.');
+      downloadExportFile({ filename: `${sanitizeExportBaseName(project.name)}.bonkproof.json`, mimeType: 'application/json', content });
+    },
   });
+
+  function initializePlanningSettings() {
+    if (poiConfig && resupplyProfile) return;
+    void Promise.all([getPoiConfig(), getResupplyProfile()]).then(() => projectWorkspace.availabilityChanged()).catch((error) => {
+      console.error(error);
+      showError(error instanceof Error ? error.message : 'Bonkproof konnte die Planungseinstellungen nicht laden.');
+    });
+  }
+
+  window.addEventListener('online', () => {
+    renderConnectivity();
+    initializePlanningSettings();
+  });
+  navigator.serviceWorker?.addEventListener('controllerchange', initializePlanningSettings);
+  window.addEventListener('offline', renderConnectivity);
+  renderConnectivity();
+  mountPwa({ canUpdate: () => projectWorkspace.safeToReload() && !poiSearchRunning && !scopedController && !routeFileReading });
+  renderGapSettingsPreview();
+  initializePlanningSettings();
 })();

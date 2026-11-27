@@ -19,24 +19,17 @@ Bonkproof is currently a static web app. It can be hosted from a subdirectory su
 
 Frontend assets use relative paths (`./styles.css`, `./app.js`, later `./config/...`) so the app does not assume it is hosted at the domain root.
 
-External resources currently used:
-- Leaflet CSS/JS from `unpkg.com`
-- OpenStreetMap raster tiles from `tile.openstreetmap.org`
+Leaflet is vendored in the release. Online map rendering uses OpenStreetMap raster tiles from `tile.openstreetmap.org`.
 
 The GPX file itself stays local in the browser and is not uploaded by Bonkproof.
 
 ## Files currently published
 
-The deployment script currently publishes only:
-- `index.html`
-- `styles.css`
-- `app.js`
-- `routebook.js`
-- `poi-search.js`
-- `poi-clustering.js`
-- `config/poi-categories.json`
+The central SFTP manifest, local PowerShell script and manual GitHub workflow publish the same release files. The lists include the application and legal pages, all reachable JavaScript modules, configuration, the POI endpoint and vendored Leaflet assets. The POI data refresh has its own workflow for the protected Overture database.
 
-The deployment script verifies that every local JavaScript module imported by a published JavaScript file is also in this list before it opens a connection.
+Before releasing a change to static app files, run `node scripts/update-app-shell.mjs` and `npm test`. The cache installer checks the exact bytes of the static release. Publish `sw.js` after the other application files. See [PWA deployment requirements](pwa.md).
+
+The local PowerShell script requires Node.js for the byte-integrity check and verifies that published JavaScript imports are covered before opening a connection. The release regression test compares all three lists and walks local JavaScript dependencies starting at the application page.
 
 ## one.com target
 

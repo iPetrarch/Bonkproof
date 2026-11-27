@@ -43,7 +43,7 @@ test('enabling a new category or changing an active radius refreshes the POI sea
 
 test('supply warnings only use active reliable resupply categories', () => {
   assert.match(app, /activeFoundResupplyPois/);
-  assert.match(app, /filterReliableResupplyPois\(visible, resupplyProfile\)/);
+  assert.match(app, /foundResupplyPois\(currentPois, acceptedScopedPois.values\(\)/);
   assert.match(app, /filterReliableSelectedPoiIds\(currentPois, selectedPoiIds, resupplyProfile, poiKey\)/);
 });
 

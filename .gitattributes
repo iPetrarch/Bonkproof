@@ -1,0 +1,7 @@
+# Application-shell integrity hashes use the tracked release bytes.
+*.html text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+vendor/leaflet/LICENSE text eol=lf
+*.png binary

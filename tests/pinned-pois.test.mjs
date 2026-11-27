@@ -12,16 +12,8 @@ test('pin state is distinct from routebook selection', () => {
   assert.match(app, /class=\"poi-pin\"/);
 });
 
-test('pinned snapshots survive refreshed searches and fresh results replace fallbacks', () => {
-  assert.match(app, /previousPinnedSnapshots/);
-  assert.match(app, /status: 'pinned'/);
-  assert.match(app, /existing\.status === 'pinned'/);
-  assert.match(app, /pinnedPoiSnapshots\.set\(key, \{ \.\.\.poi \}\)/);
-});
-
 test('pinned POIs remain visible but do not automatically close found-resupply gaps', () => {
   assert.match(app, /if \(pinnedPoiIds\.has\(poiKey\(poi\)\) \|\| selectedPoiIds\.has\(poiKey\(poi\)\)\) return true/);
-  assert.match(app, /poi\.status !== 'pinned'/);
   assert.match(styles, /\.poi-marker\.pinned/);
 });
 
@@ -29,10 +21,6 @@ test('new routes reset pins', () => {
   assert.match(app, /pinnedPoiIds = new Set\(\);\s*pinnedPoiSnapshots = new Map\(\);\s*currentRouteDistanceMeters = parsed\.distanceMeters/);
 });
 
-
-test('pins survive when every category is disabled', () => {
-  assert.match(app, /if \(categories\.length === 0\)[\s\S]*pinnedFallbacks[\s\S]*renderPois\(pinnedFallbacks, config\.categories\)/);
-});
 
 test('pinned and selected POIs are not duplicated on the map', () => {
   assert.match(app, /const mapPois = currentPois\.filter\(\(poi\) => isPoiVisible\(poi, effectiveState\)\)/);

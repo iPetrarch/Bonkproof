@@ -30,6 +30,7 @@ export function buildRouteGeometry(parsed) {
       const a = points[pointIndex - 1];
       const b = points[pointIndex];
       const lengthM = haversineMeters(a, b);
+      if (lengthM === 0) continue;
       geometry.push({
         a,
         b,
@@ -61,6 +62,7 @@ function projectPointToSegment(point, segment) {
   const dx = px - bx * t;
   const dy = py - by * t;
   return {
+    fraction: t,
     distanceM: Math.hypot(dx, dy),
     routeMeters: segment.routeStartM + segment.lengthM * t,
     lat: segment.a.lat + (segment.b.lat - segment.a.lat) * t,
@@ -70,45 +72,30 @@ function projectPointToSegment(point, segment) {
   };
 }
 
-function splitContiguousCandidates(candidates, encounterMergeM) {
-  const groups = [];
-  candidates.forEach((candidate) => {
-    const current = groups.at(-1);
-    const previous = current?.at(-1);
-    const contiguous = previous
-      && candidate.sourceSegmentIndex === previous.sourceSegmentIndex
-      && candidate.geometryIndex === previous.geometryIndex + 1
-      && Math.abs(candidate.routeMeters - previous.routeMeters) <= encounterMergeM;
-    if (!contiguous) groups.push([candidate]);
-    else current.push(candidate);
-  });
-  return groups;
-}
-
-function bestCandidate(group) {
-  return group.reduce((best, candidate) => (
-    !best || candidate.distanceM < best.distanceM ? candidate : best
-  ), null);
-}
-
 export function projectPoiPassBys(point, geometry, maximumDistanceM) {
-  const candidates = geometry
-    .map((segment) => projectPointToSegment(point, segment))
-    .filter((candidate) => candidate.distanceM <= maximumDistanceM)
-    .sort((a, b) => a.geometryIndex - b.geometryIndex);
+  const passBys = [];
+  let previous = null;
+  for (const segment of geometry) {
+    const candidate = projectPointToSegment(point, segment);
+    const sameTrackSegment = previous?.sourceSegmentIndex === candidate.sourceSegmentIndex;
+    // An interior minimum or a vertex where the route stops approaching
+    // the POI marks an encounter, independent of the requested corridor.
+    if (sameTrackSegment && previous.fraction === 1 && candidate.fraction === 0) {
+      if (candidate.distanceM <= maximumDistanceM) passBys.push(candidate);
+    } else {
+      if (!sameTrackSegment && previous?.fraction === 1 && previous.distanceM <= maximumDistanceM) passBys.push(previous);
+      if ((candidate.fraction > 0 && candidate.fraction < 1 || !sameTrackSegment && candidate.fraction === 0)
+          && candidate.distanceM <= maximumDistanceM) passBys.push(candidate);
+    }
+    previous = candidate;
+  }
+  if (previous?.fraction === 1 && previous.distanceM <= maximumDistanceM) passBys.push(previous);
 
-  const encounterMergeM = Math.max(100, maximumDistanceM * 2);
-  const passBys = splitContiguousCandidates(candidates, encounterMergeM)
-    .map(bestCandidate)
-    .filter(Boolean)
-    .sort((a, b) => a.routeMeters - b.routeMeters)
-    .map((projection, index, all) => ({
-      ...projection,
-      routeKm: projection.routeMeters / 1000,
-      passIndex: index + 1,
-      passCount: all.length,
-      passId: `pass-${index + 1}`,
-    }));
-
-  return passBys;
+  return passBys.map((projection, index) => ({
+    ...projection,
+    routeKm: projection.routeMeters / 1000,
+    passIndex: index + 1,
+    passCount: passBys.length,
+    passId: `edge-${projection.geometryIndex}`,
+  }));
 }

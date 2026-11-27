@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "Bonkproof",
+  "short_name": "Bonkproof",
+  "description": "Lokale Routen- und Verpflegungsplanung für Langstrecken.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3eee3",
+  "theme_color": "#123c49",
+  "icons": [
+    { "src": "icons/bonkproof-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/bonkproof-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

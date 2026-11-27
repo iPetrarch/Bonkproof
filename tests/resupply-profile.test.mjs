@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { poiKey } from '../routebook.js';
+import { buildFoundPoiWarnings, poiKey } from '../routebook.js';
 import {
   filterReliableResupplyPois,
   filterReliableSelectedPoiIds,
+  foundResupplyPois,
   isReliableResupplyPoi,
   reliableResupplyCategoryIds,
 } from '../resupply-profile.js';
@@ -41,4 +42,24 @@ test('routebook selection can be reduced to reliable resupply stops without losi
 test('profile can later be expanded without changing route analysis code', () => {
   const custom = { reliableCategoryIds: ['supermarket', 'fuel', 'drinking_water', 'bakery'] };
   assert.equal(isReliableResupplyPoi({ category: { id: 'bakery' } }, custom), true);
+});
+
+test('global radius changes requalify cached hits and scoped matches independently close gaps', () => {
+  const cached = { ...pois[0], name: 'Market', routeKm: 40, offRouteM: 400, status: 'near-miss' };
+  const retained = { ...pois[1], offRouteM: 0, status: 'retained' };
+  const pinned = { ...pois[2], offRouteM: 0, status: 'pinned' };
+  const scoped = { ...cached, name: 'Scoped', osmId: 9, routeKm: 70, scoped: true };
+  const enabled = new Set(['supermarket', 'fuel', 'drinking_water']);
+  const warnings = (radius, accepted = []) => buildFoundPoiWarnings(
+    foundResupplyPois([cached, retained, pinned, ...accepted], accepted, enabled, () => radius, profile, poiKey),
+    100_000,
+  );
+  assert.equal(warnings(200).longestGapM, 100_000);
+  assert.equal(warnings(500).longestGapM, 60_000);
+  assert.equal(warnings(500, [scoped]).foundCount, 1, 'scoped near miss cannot use the global radius');
+  assert.equal(warnings(200, [{ ...scoped, status: 'match' }]).longestGapM, 70_000);
+  assert.equal(warnings(500, [{ ...cached, scoped: true, status: 'match' }]).foundCount, 1);
+  enabled.delete('supermarket');
+  assert.equal(warnings(500).foundCount, 0);
+  assert.equal(warnings(500, [{ ...scoped, status: 'match' }]).foundCount, 1);
 });

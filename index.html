@@ -2,9 +2,13 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Bonkproof helps long-distance riders understand useful stops and supply gaps along a GPX route.">
   <title>Bonkproof</title>
+  <meta name="theme-color" content="#123c49">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" href="./icons/bonkproof-192.png" type="image/png">
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="./styles.css">
@@ -44,16 +48,57 @@
         <button id="replace-route" class="text-button" type="button">Replace route</button>
       </aside>
 
+      <p id="map-background-status" class="map-background-status" role="status" hidden></p>
+      <a class="map-planning-link" href="#planning-tools">Zur Planung</a>
       <div id="error-message" class="error-message" role="alert" hidden></div>
     </section>
 
     <section class="sheet" aria-label="Bonkproof controls">
       <div class="sheet-handle" aria-hidden="true"></div>
-      <nav class="tabs" aria-label="Route tools">
+      <div class="pwa-status" aria-label="Verbindung und Offline-Anwendung">
+        <p id="connection-status" role="status"></p>
+        <p id="pwa-cache-status" role="status">Offline-Anwendung noch nicht vollständig vorbereitet</p>
+        <p id="poi-connection-status" role="status" hidden></p>
+        <button id="pwa-update" type="button" hidden>Update installieren</button>
+        <button id="pwa-prepare" type="button" hidden>Offline vorbereiten</button>
+        <p id="pwa-action-status" role="status"></p>
+      </div>
+      <nav id="planning-tools" class="tabs" aria-label="Routenwerkzeuge">
         <button id="pois-tab" class="tab is-active" type="button" aria-selected="true">POIs</button>
         <button id="routebook-tab" class="tab" type="button" aria-selected="false">Routebook</button>
+        <button id="warnings-shortcut" class="tab" type="button">Warnungen</button>
         <button id="export-tab" class="tab" type="button" aria-selected="false" disabled>Export</button>
       </nav>
+      <details id="project-workspace" class="workspace-section" open>
+        <summary>Projekte · <span data-project="summary" role="status">Neues Projekt</span></summary>
+        <div class="project-fields">
+          <label>Projektname <input data-project="name" value="Neues Projekt" maxlength="120"></label>
+          <div class="project-actions">
+            <button data-project="new" type="button">Neu</button>
+            <button data-project="save" type="button">Speichern</button>
+            <button data-project="duplicate" type="button">Duplizieren</button>
+          </div>
+          <label>Lokale Projekte <select data-project="list"></select></label>
+          <div class="project-actions">
+            <button data-project="open" type="button" disabled>Öffnen</button>
+            <button data-project="delete" type="button" disabled>Löschen</button>
+            <button data-project="export" type="button">Projektdatei exportieren</button>
+            <button data-project="import" type="button">Projektdatei importieren</button>
+          </div>
+          <input data-project="file" type="file" accept=".json,application/json" hidden>
+          <p data-project="available" role="status"></p>
+          <p data-project="status" role="status"></p>
+          <p data-project="feedback" role="status"></p>
+        </div>
+      </details>
+      <details class="offline-help">
+        <summary>Installation und Offline-Nutzung</summary>
+        <p id="pwa-install-help">Auf dem iPhone in Safari „Teilen“ und „Zum Home-Bildschirm“ wählen. In anderen Browsern das Installationsangebot oder das Browser-Menü verwenden.</p>
+        <p>GPX, gespeicherte POIs und Projekte sind lokal verfügbar. Hintergrundkarte und neue POI-Suchen brauchen Internet. Bediene Bonkproof während eines Halts.</p>
+        <p>Exportiere Projektdateien als Backup. Browserdaten können verloren gehen.</p>
+        <button id="pwa-install" type="button" hidden>Bonkproof installieren</button>
+        <button id="pwa-persist" type="button" hidden>Dauerhaften Speicher anfragen</button>
+      </details>
 
       <section id="poi-panel" class="poi-panel" aria-labelledby="poi-heading">
         <div class="panel-heading">
@@ -70,23 +115,51 @@
           <p id="ice-status" class="ice-status" role="status" hidden></p>
         </div>
 
-        <div id="poi-categories" class="poi-categories" hidden></div>
+        <details class="workspace-section" open>
+          <summary>POI-Kategorien und Suchradien</summary>
+          <div id="poi-categories" class="poi-categories" hidden></div>
+        </details>
 
         <div class="poi-legend" aria-label="POI legend" hidden id="poi-legend">
           <span><i class="legend-dot"></i> inside corridor</span>
           <span><i class="legend-dot near"></i> near miss</span>
         </div>
 
-        <p id="poi-empty" class="poi-empty" hidden></p>
-        <div id="poi-warning-summary" class="warning-summary" hidden></div>
-        <ol id="poi-warning-list" class="warnings-list" hidden></ol>
-        <ol id="poi-list" class="poi-list" hidden></ol>
-        <div id="poi-pagination" class="poi-pagination" hidden>
-          <span id="poi-page-summary"></span>
-          <span id="poi-page-number"></span>
-          <button id="poi-previous" type="button">Zurück</button>
-          <button id="poi-next" type="button">Weiter</button>
-        </div>
+        <details class="workspace-section" open>
+          <summary>Long-Distance-Warnungen <span id="poi-warning-overview" aria-live="polite"></span></summary>
+          <div id="poi-warning-summary" class="warning-summary" hidden></div>
+          <ol id="poi-warning-list" class="warnings-list" hidden></ol>
+          <section id="scoped-poi-search" aria-labelledby="scoped-poi-heading" hidden>
+            <h3 id="scoped-poi-heading" tabindex="-1">POI-Nachsuche</h3>
+            <p id="scoped-poi-range"></p>
+            <form id="scoped-poi-form">
+              <fieldset id="scoped-poi-categories">
+                <legend>Kategorien und Suchradien für diesen Abschnitt</legend>
+              </fieldset>
+              <button type="submit" id="scoped-poi-submit">Nachsuche starten</button>
+              <button type="button" id="scoped-poi-cancel" hidden>Suche abbrechen</button>
+            </form>
+            <p id="scoped-poi-status" role="status"></p>
+            <form id="scoped-poi-review" hidden>
+              <fieldset>
+                <legend>Vorbeifahrten zur Übernahme auswählen</legend>
+                <ol id="scoped-poi-results"></ol>
+              </fieldset>
+              <button type="submit">Ausgewählte Treffer übernehmen</button>
+            </form>
+          </section>
+        </details>
+        <details class="workspace-section" open>
+          <summary>Gefundene POIs</summary>
+          <p id="poi-empty" class="poi-empty" hidden></p>
+          <ol id="poi-list" class="poi-list" hidden></ol>
+          <div id="poi-pagination" class="poi-pagination" hidden>
+            <span id="poi-page-summary"></span>
+            <span id="poi-page-number"></span>
+            <button id="poi-previous" type="button">Zurück</button>
+            <button id="poi-next" type="button">Weiter</button>
+          </div>
+        </details>
       </section>
 
       <section id="routebook-panel" class="routebook-panel" aria-labelledby="routebook-heading" hidden>
@@ -97,24 +170,30 @@
           </div>
         </div>
 
-        <fieldset class="gap-settings" aria-describedby="gap-threshold-preview gap-settings-error">
-          <legend>Versorgungslücken</legend>
-          <label>
-            <span>Critical-Referenz</span>
-            <span class="gap-input"><input id="gap-critical-km" type="number" min="1" max="500" step="1" value="30" inputmode="decimal"> km</span>
-          </label>
-          <div class="gap-percentage-grid">
-            <label><span>Info ab</span><span class="gap-input"><input id="gap-info-percent" type="number" min="1" max="99" step="1" value="66" inputmode="numeric"> %</span></label>
-            <label><span>Warning ab</span><span class="gap-input"><input id="gap-warning-percent" type="number" min="1" max="99" step="1" value="80" inputmode="numeric"> %</span></label>
-            <label><span>Critical ab</span><span class="gap-input"><input id="gap-critical-percent" type="number" min="1" max="100" step="1" value="95" inputmode="numeric"> %</span></label>
-          </div>
-          <p id="gap-threshold-preview" class="gap-threshold-preview"></p>
-          <p id="gap-settings-error" class="gap-settings-error" role="alert" hidden></p>
-        </fieldset>
+        <details class="workspace-section" open>
+          <summary>Warnungseinstellungen</summary>
+          <fieldset class="gap-settings" aria-describedby="gap-threshold-preview gap-settings-error">
+            <legend>Versorgungslücken</legend>
+            <label>
+              <span>Critical-Referenz</span>
+              <span class="gap-input"><input id="gap-critical-km" type="number" min="1" max="500" step="1" value="30" inputmode="decimal"> km</span>
+            </label>
+            <div class="gap-percentage-grid">
+              <label><span>Info ab</span><span class="gap-input"><input id="gap-info-percent" type="number" min="1" max="99" step="1" value="66" inputmode="numeric"> %</span></label>
+              <label><span>Warning ab</span><span class="gap-input"><input id="gap-warning-percent" type="number" min="1" max="99" step="1" value="80" inputmode="numeric"> %</span></label>
+              <label><span>Critical ab</span><span class="gap-input"><input id="gap-critical-percent" type="number" min="1" max="100" step="1" value="95" inputmode="numeric"> %</span></label>
+            </div>
+            <p id="gap-threshold-preview" class="gap-threshold-preview"></p>
+            <p id="gap-settings-error" class="gap-settings-error" role="alert" hidden></p>
+          </fieldset>
+        </details>
 
-        <p id="routebook-summary" class="status-copy"></p>
-        <div id="routebook-empty" class="routebook-empty">Choose POIs in the POIs tab to build your routebook.</div>
-        <ol id="routebook-list" class="routebook-list" hidden></ol>
+        <details class="workspace-section" open>
+          <summary>Routebook <span id="routebook-warning-overview"></span></summary>
+          <p id="routebook-summary" class="status-copy"></p>
+          <div id="routebook-empty" class="routebook-empty">Choose POIs in the POIs tab to build your routebook.</div>
+          <ol id="routebook-list" class="routebook-list" hidden></ol>
+        </details>
       </section>
 
       <section id="export-panel" class="export-panel" aria-labelledby="export-heading" hidden>

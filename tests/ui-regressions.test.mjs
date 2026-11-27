@@ -32,7 +32,7 @@ test('legal pages are linked from the app and included in both deployment paths'
   assert.match(githubDeploy, /put datenschutz\.html/);
   assert.match(deploy, /'vendor\/leaflet\/leaflet\.js'/);
   assert.match(deploy, /'vendor\/leaflet\/leaflet\.css'/);
-  assert.match(githubDeploy, /leaflet@1\.9\.4/);
+  assert.doesNotMatch(githubDeploy, /npm install[^\n]*leaflet|cp[^\n]*node_modules\/leaflet/);
   assert.match(githubDeploy, /put vendor\/leaflet\/leaflet\.js/);
 });
 
@@ -56,7 +56,9 @@ test('privacy page documents the current data flows and future review triggers',
   assert.match(privacy, /Leaflet wird von Bonkproof lokal ausgeliefert/);
   assert.doesNotMatch(privacy, /unpkg\.com/);
   assert.match(privacy, /TrackKin-Handoff ist derzeit ein lokaler Dateiexport/);
-  assert.match(privacy, /weder Cookies noch Local Storage oder Session Storage/);
+  assert.match(privacy, /weder Cookies noch Local Storage/);
+  assert.match(privacy, /in IndexedDB/);
+  assert.match(privacy, /nicht zwischen Geräten synchronisiert/);
   assert.match(privacy, /direkte Bonkproof-TrackKin-Schnittstelle/);
 });
 
@@ -175,7 +177,7 @@ test('found and routebook warnings are distinct and use the fixed threshold', ()
 });
 
 test('POI warning rendering suppresses incomplete physical gaps but keeps routebook warnings independent', () => {
-  const renderer = app.match(/function renderWarnings\(\)[\s\S]*?\n  \}\n\n  function spiderfyCluster/)[0];
+  const renderer = app.match(/function renderWarnings\(\)[\s\S]*?\n  \}\n\n  function setScopedSearchRunning/)[0];
   assert.match(renderer, /poiSearchRunning/);
   assert.match(renderer, /poiSectionStatus\.failed\.size > 0/);
   assert.match(renderer, /Versorgungslücken werden geprüft/);
@@ -206,8 +208,6 @@ test('POI section status keeps partial retries incomplete and preserves successf
   assert.match(app, /const incomplete = poiSectionStatus\.started && \(poiSectionStatus\.failed\.size > 0 \|\| poiSectionStatus\.completed < poiSectionStatus\.total\)/);
   assert.match(app, /poiSectionStatus\.completed \+= 1/);
   assert.match(app, /poiSectionStatus\.failed\.add\(workload\.id\)/);
-  assert.match(app, /const pinnedFallbacks = \[\.\.\.pinnedPoiSnapshots\.entries\(\)\]/);
-  assert.match(app, /const deduped = new Map\(\[\.\.\.\(retryFailedOnly \|\| incremental \? currentPois : \[\]\)\.map/);
   assert.match(app, /loadPois\(currentParsedRoute, true, failedPoiSections\.length > 0\)/);
 });
 
@@ -386,4 +386,17 @@ test('Routebook tab renders only selected POIs without changing map view or quer
   assert.match(app, /setActiveTab\(tab\)[\s\S]*?renderMapPois\(\)/);
   assert.doesNotMatch(app.match(/function setActiveTab\(tab\)[\s\S]*?\n  \}/)[0], /loadPois|fitBounds/);
   assert.match(app, /function toggleSelection\(poiId\)[\s\S]*?renderMapPois|renderPois/);
+});
+
+test('workspace disclosures remain independent and show severity in collapsed summaries', () => {
+  const sections = [...index.matchAll(/<details class="workspace-section"([^>]*)>([\s\S]*?)<\/details>/g)];
+  assert.equal(sections.length, 5);
+  assert.ok(sections.every(([, attributes]) => attributes.trim() === 'open'));
+  assert.ok(sections.some(([, , body]) => body.includes('id="poi-warning-list"')
+    && /<summary>[^\n]*id="poi-warning-overview"/.test(body)));
+  assert.ok(sections.some(([, , body]) => body.includes('id="poi-list"') && body.includes('id="poi-pagination"')));
+  assert.ok(sections.some(([, , body]) => body.includes('id="routebook-list"')
+    && /<summary>[^\n]*id="routebook-warning-overview"/.test(body)));
+  assert.ok(sections.some(([, , body]) => body.includes('class="gap-settings"')));
+  assert.match(styles, /\.workspace-section > summary:focus-visible/);
 });
